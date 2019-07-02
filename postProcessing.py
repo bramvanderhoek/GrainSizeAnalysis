@@ -388,7 +388,7 @@ kin_visc : float, int
 density : float, int
     Density of fluid.
 margin : float, int
-    Margin to be excluded from calculations on all sides of the domain.
+    Margin to be excluded from calculations at the inlet and outlet of the domain.
 epsilon : float
     Range around the minimum and maximum x values of the domain (excluding the margins) around which cells will be used to calculate the pressure gradient,
     e.g. for epsilon = 0.0001, the pressure on the left side of the domain will be calculated as the mean of the cells between x = (xmin + margin) - 0.0001, and x = (xmin + margin) + 0.0001
@@ -405,7 +405,7 @@ k : float
         vtk.writeVectorComponents("U")
 
     # Define box for which permeability will be determined
-    box = [vtk.xmin + margin, vtk.xmax - margin, vtk.ymin + margin, vtk.ymax - margin, vtk.zmin, vtk.zmax]
+    box = [vtk.xmin + margin, vtk.xmax - margin, vtk.ymin, vtk.ymax  vtk.zmin, vtk.zmax]
     # Calculate mean pressures at both ends of the region
     p1 = vtk.calcMean("p", region=[box[0]-epsilon, box[0]+epsilon, box[2], box[3], box[4], box[5]], volumeWeighted=True)
     p2 = vtk.calcMean("p", region=[box[1]-epsilon, box[1]+epsilon, box[2], box[3], box[4], box[5]], volumeWeighted=True)

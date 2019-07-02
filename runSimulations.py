@@ -1,6 +1,7 @@
 import os
 import time
 import numpy as np
+import subprocess
 import randomCircles
 import postProcessing as postP
 import preProcessing as preP
@@ -73,9 +74,9 @@ scripts = ["/trinity/opt/apps/software/openFoam/version6/OpenFOAM-6/etc/bashrc"]
 # Name of the base directory to perform the simulations in
 baseDir = "../Simulations"
 # Name of this batch of simulations
-runName = "Symmetry"
+runName = "Cyclic"
 # Directory to copy the base OpenFOAM case from
-baseCaseDir = "../baseCase_symmetry"
+baseCaseDir = "../baseCase_cyclic"
 
 thisDir = os.getcwd()
 
@@ -91,6 +92,7 @@ os.chdir(baseDir)
 ### DOMAIN GENERATION ###
 
 if generateDomain:
+    print("Starting domain generation")
     if not os.path.isdir("stl"):
         os.mkdir("stl")
     os.chdir("stl")
@@ -108,6 +110,7 @@ if generateDomain:
 ### PRE-PROCESSING ###
 
 if preProcess:
+    print("Starting pre-processing")
     if not os.path.isdir("cases"):
         os.mkdir("cases")
 
@@ -117,7 +120,7 @@ if preProcess:
 
     if not os.path.isdir("baseCase"):
         os.mkdir("baseCase")
-    os.system("cp -rf {0}{1}* baseCase{1}".format(baseCaseDir, os.sep))
+    subprocess.call(["cp", "-rf", "{0}{1}* baseCase{1}".format(baseCaseDir, os.sep)])
 
     # Get absolute paths to stl, baseCase & cases directories
     stlDir = os.path.realpath("stl")
@@ -132,13 +135,13 @@ if preProcess:
 
         # Create case from baseCase if it does not exist yet
         if not os.path.isdir(caseDir):
-            os.system("foamCloneCase {0} {1}".format(baseCaseDir, caseDir))
+            subprocess.call(["foamCloneCase", baseCaseDir, caseDir])
 
         # Go into case directory
         os.chdir(caseDir)
 
         # Copy .stl file to the triSurface folder of the case
-        os.system("cp {0} {1}{2}constant{2}triSurface".format(caseStlFile, caseDir, os.sep))
+        subprocess.call(["cp", caseStlFile, "{0}{1}constant{1}triSurface".format(caseDir, os.sep)])
 
         # Get location in mesh from stl directory
         LIM_file = open("{0}{1}locationInMesh.dat".format(caseStlDir, os.sep))
@@ -149,6 +152,7 @@ if preProcess:
         preP.updateBlockMeshDict("system", domain["xmin"], domain["xmax"], domain["ymin"], domain["ymax"], domain["height"], mindist=model["mindist"])
         preP.updateSnappyHexMeshDict("system", "stl", locationInMesh, refinement=snappyRefinement, castellatedMesh=True, snap=True if not snappyRefinement else False)
         preP.updateDecomposeParDict("system", coresPerSim)
+        preP.updateExtrudeMeshDict("system", height)
         preP.createPreProcessingScript("{0}_{1}".format(runName, i), coresPerSim, tasksPerNode, threadsPerCore, partition, modules, scripts, refinement=snappyRefinement)
 
         # Go back to base directory
@@ -167,7 +171,7 @@ if preProcess:
                 activeCases.append(newCaseDir)
                 # Put new case in queue (note the '&' which prevents the command from blocking the program)
                 os.chdir(newCaseDir)
-                os.system("sbatch {0}{1}preprocessing{2}.sh &".format(newCaseDir, os.sep, "_0" if snappyRefinement else ""))
+                subprocess.call(["sbatch", "{0}{1}preprocessing{2}.sh".format(newCaseDir, os.sep, "_0" if snappyRefinement else ""), "&"])
                 os.chdir(baseDir)
 
             print("Cases running/in queue: {0}".format(activeCases))
@@ -192,7 +196,7 @@ if preProcess:
                         # Start second part of meshing if refinement is on and the second snappyHexMesh log has not been created yet
                         os.chdir(newCaseDir)
                         updateSnappyHexMeshDict("system", "stl", refinement=snappyRefinement, castellatedMesh=False, snap=True)
-                        os.sytem("sbatch {0}{1}preprocessing_1.sh &".format(caseDir, os.sep))
+                        subprocess.call(["sbatch", "{0}{1}preprocessing_1.sh".format(caseDir, os.sep), "&"])
                         os.chdir(baseDir)
                     else:
                         # Insert the index of finished case at the beginnning of the endCases list, so it will be ordered from high to low index
@@ -208,12 +212,12 @@ if preProcess:
         while waitingCases:
             caseDir = waitingCases.pop(0)
             os.chdir(caseDir)
-            os.system("chmod +x {0}{1}preprocessing{2}.sh".format(caseDir, os.sep, "_0" if snappyRefinement else ""))
-            os.system("./preprocessing{0}.sh".format("_0" if snappyRefinement else ""))
+            subprocess.call(["chmod", "+x", "{0}{1}preprocessing{2}.sh".format(caseDir, os.sep, "_0" if snappyRefinement else "")])
+            subprocess.call(["./preprocessing{0}.sh".format("_0" if snappyRefinement else "")])
             if snappyRefinement:
                 preP.updateSnappyHexMeshDict("system", "stl", refinement=snappyRefinement, castellatedMesh=False, snap=True)
-                os.system("chmod +x {0}{1}preprocessing_1.sh".format(caseDir, os.sep))
-                os.system("./preprocessing_1.sh")
+                subprocess.call(["chmod", "+x", "{0}{1}preprocessing_1.sh".format(caseDir, os.sep)])
+                subprocess.call(["./preprocessing_1.sh"])
             finishedCases.append(caseDir)
             os.chdir(baseDir)
 
@@ -221,6 +225,7 @@ if preProcess:
 
 os.chdir(baseDir)
 if simulations:
+    print("Starting simulations")
     for i in range(nSimulations):
         caseDir = os.path.realpath("cases{0}{1}_{2}".format(os.sep, runName, i))
         if not os.path.isdir(caseDir):
@@ -242,10 +247,9 @@ if simulations:
                 activeCases.append(newCaseDir)
                 # Put new case in queue (note the '&' which prevents the command from blocking the program)
                 os.chdir(newCaseDir)
-                os.system("sbatch {0}{1}runSimulations.sh &".format(newCaseDir, os.sep))
+                subprocess.call(["sbatch", "{0}{1}runSimulations.sh".format(newCaseDir, os.sep), "&"])
                 os.chdir(baseDir)
-
-            print("Cases running/in queue: {0}".format(activeCases))
+                print("Cases running/in queue: {0}".format(activeCases))
             
             # Give the cluster some time to put the scripts into the queue
             time.sleep(5)
@@ -275,13 +279,14 @@ if simulations:
         while waitingCases:
             caseDir = waitingCases.pop(0)
             os.chdir(caseDir)
-            os.system("chmod +x runSimulations.sh")
-            os.system("./runSimulations.sh")
+            subprocess.call(["chmod", "+x", "runSimulations.sh"])
+            subprocess.call(["./runSimulations.sh"])
             finishedCases.append(caseDir)
             os.chdir(baseDir)
 
 os.chdir(baseDir)
 if postProcess:
+    print("Starting post-processing")
     for i in range(nSimulations):
         caseDir = os.path.realpath("cases{0}{1}_{2}".format(os.sep, runName, i))
         if not os.path.isdir(caseDir):
@@ -320,7 +325,7 @@ if postProcess:
                 activeCases.append(newCaseDir)
                 # Put new case in queue (note the '&' which prevents the command from blocking the program)
                 os.chdir(newCaseDir)
-                os.system("sbatch {0}{1}postprocessing.sh &".format(newCaseDir, os.sep))
+                subprocess.call(["sbatch", "{0}{1}postprocessing.sh".format(newCaseDir, os.sep), "&"])
                 os.chdir(baseDir)
 
             print("Cases running/in queue: {0}".format(activeCases))
@@ -352,8 +357,8 @@ if postProcess:
         while waitingCases:
             caseDir = waitingCases.pop(0)
             os.chdir(caseDir)
-            os.system("chmod +x postprocessing.sh")
-            os.system("./postprocessing.sh")
+            subprocess.call(["chmod", "+x", "postprocessing.sh"])
+            subprocess.call(["./postprocessing.sh"])
             finishedCases.append(caseDir)
             os.chdir(baseDir)
 

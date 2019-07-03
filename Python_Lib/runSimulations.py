@@ -28,6 +28,7 @@ domain = dict(xmin=0,
             ymin=0,
             ymax=4,
             por=0.35,
+            porTolerance=0.05,
             height=model["mindist"]/np.sqrt(8))
 
 ####################################
@@ -46,16 +47,19 @@ snappyRefinement = False
 # Margin around the edges of the domain that will be ignored during post-processing
 postProcessingMargin = (domain["xmax"] - domain["xmin"]) * 0.1
 
+# Number of allowed failed cases before the program stops
+nAllowedFails = 10
+
 # Number of simulations to do during Monte Carlo
 nSimulations = 1
+# Number of cores to use for each simulation
+coresPerSim = 1
 # Whether or not to run on cluster (non-clustervsimulations not yet implemented)
 cluster = False
 # Username of account of cluster from which this script is being run
 clusterUser = "3979202"
 # Number of simulations to run in parallel at one time (value higher than 1 only supported for cluster)
 nParallelSims = 10
-# Number of cores to use for each simulation
-coresPerSim = 1
 # Amount tasks to be invoked per computing node
 tasksPerNode = 1
 # Restrict node selection to nodes with at least the specified number of threads per core.
@@ -135,7 +139,7 @@ if preProcess:
 
         # Create case from baseCase if it does not exist yet
         if not os.path.isdir(caseDir):
-            subprocess.call(["foamCloneCase", baseCaseDir, caseDir])
+            subprocess.call(["cp", "-rf", baseCaseDir, caseDir])
 
         # Go into case directory
         os.chdir(caseDir)
@@ -182,10 +186,10 @@ if preProcess:
             # Initialize list which will hold the indices of cases which are finished
             endCases = []
             # Get list of processes that are in the queue or running, together with the username
-            queue = os.popen("squeue -h --Format=name:32,username:32").read()
+            queue = os.popen("squeue -h --Format=name:32,username:32,JobID").read()
             queue = queue.split("\n")[:-1]
             # Create dictionary with keys being the names of processes in the queue and values the usernames that started the process
-            queue = dict([[i[:32].strip(), i[32:].strip()] for i in queue])
+            queue = dict([[i[:32].strip(), [i[32:64].strip(), i[64:].strip()]] for i in queue])
             for i in range(len(activeCases)):
                 # Get references to case directory and case name
                 caseDir = activeCases[i]
@@ -235,6 +239,8 @@ if simulations:
         preP.createSimulationScript("{0}_{1}".format(runName, i), coresPerSim, tasksPerNode, threadsPerCore, partition, modules, scripts)
         os.chdir(baseDir)
 
+    nSimFails = 0
+
     waitingCases = [os.path.realpath("cases{0}{1}_{2}".format(os.sep, runName, i)) for i in range(nSimulations)]
     activeCases = []
     finishedCases = []
@@ -271,18 +277,40 @@ if simulations:
 
             for i in endCases:
                 case = activeCases.pop(i)
-                finishedCases.append(case)
-                print("Finished cases: {0}".format(finishedCases))
-
-        print("All cases finished")
+                if checkLog("{0}{1}simpleFoam.log".format(case)):
+                    finishedCases.append(case)
+                    print("Finished cases: {0}".format(finishedCases))
+                else:
+                    nSimFails += 1
+                    caseName = case.split(os.sep)[-1]
+                    print("Case '{0}' failed to run properly. Current total number of fails: {1}/{2}".format(caseName, nSimFails, nAllowedFails))
+                    if nSimFails >= nAllowedFails:
+                        print("Maximum amount of failed cases reached ({0}), quitting...".format(nAllowedFails))
+                        # Add some code here to stop all other simulations?
+                        quit()
+                    else:
+                        print("Restarting case '{0}'".format(caseName))
+                        waitingCases.append(case)
     else:
         while waitingCases:
             caseDir = waitingCases.pop(0)
             os.chdir(caseDir)
             subprocess.call(["chmod", "+x", "runSimulations.sh"])
             subprocess.call(["./runSimulations.sh"])
-            finishedCases.append(caseDir)
+            if checkLog("{0}{1}simpleFoam.log".format(caseDir, os.sep))
+                finishedCases.append(caseDir)
+            else:
+                nSimFails += 1
+                caseName = caseDir.split(os.sep)[-1]
+                print("Case '{0}' failed to run properly. Current total number of fails: {1}/{2}".format(caseName, nSimFails, nAllowedFails))
+                if nSimFails >= nAllowedFails:
+                    print("Maximum amount of failed cases reached ({0}), quitting...".format(nAllowedFails))
+                    quit()
+                else:
+                    print("Restarting case '{0}'".format(caseName))
+                    waitingCases.append(caseDir)
             os.chdir(baseDir)
+    print("All cases finished")
 
 os.chdir(baseDir)
 if postProcess:
@@ -382,3 +410,28 @@ if postProcess:
         outFile.write("{0}\t{1}\t{2}\n".format("{0}_{1}".format(runName, i), por, k))
 
     outFile.close()
+
+def checkLog(logfile):
+    """Checks OpenFOAM log file to see if an OpenFOAM process ended properly or aborted due to an error.
+Returns True if log ended properly, else returns False.
+
+PARAMETERS
+----------
+logfile : str
+    Path to the log file to be checked.
+
+RETURNS
+-------
+status : bool
+    True or False value depending on whether or not the OpenFOAM process ended properly, respectively."""
+    
+    # Get the last word from the log file using the 'tail' command
+    lastWord = os.popen("tail {0}".format(logFile)).read().split()[-1]
+
+    # If log file ends with the word 'End', we know that the process ended properly, otherwise something went wrong
+    if lastWord == "End":
+        status = True
+    else:
+        status = False
+
+    return status

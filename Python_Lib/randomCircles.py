@@ -187,7 +187,7 @@ doubleR : array
 
     return keeperX, keeperY, keeperR, doubleX, doubleY, doubleR
 
-def createModel(distribution, domain, porTolerance=0.001, numberOfPoints=100000, stlFilename="output", path=".", pointsPerCircle=50, plotting=False):
+def createModel(distribution, domain, numberOfPoints=100000, stlFilename="output", path=".", pointsPerCircle=50, plotting=False):
     """Create a model with the input grain size distribution (log-normal), and a specified porosity, and write it to a Stereolithography file.
 
 PARAMETERS
@@ -225,11 +225,11 @@ domain : dict
             Upper value of the domain size along the y-axis (mm).
         por : float
             The porosity of the domain.
+        porTolerance : float
+            Amount of deviation allowed in the porosity of the model (as decimal percentage of por).
         height : int, float
             Height of the domain (i.e. its thickness along the z-axis) (mm).
 
-porTolerance : float
-    Amount of deviation allowed in the porosity of the model.
 numberOfPoints : int
     Amount of randomly generated points that will be tried out when trying to place a grain into the model
 stlFilename : str
@@ -250,6 +250,7 @@ plotting : bool
     stlHeight = domain["height"]
 
     por = domain["por"]
+    porTolerance = domain["porTolerance"]
 
     # Get distribution statistics from dictionary
     # NOTE: when different distributions are available, the parameters will be different and the entire dictionary should probably be passed to a function!
@@ -278,7 +279,7 @@ plotting : bool
     porNew = calcPorosity(r, meshArea)
 
     # Add or subtract grains until porosity is within acceptable range of wanted porosity
-    while not (porNew > por - porTolerance and porNew < por + porTolerance):
+    while not (porNew > por - (por * porTolerance) and porNew < por + (por * porTolerance)):
         if porNew > por:
             numberR += 1
         elif porNew < por:

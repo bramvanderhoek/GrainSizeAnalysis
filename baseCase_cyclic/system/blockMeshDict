@@ -26,6 +26,9 @@ nx      2270;
 ny      2270;
 nz      1;
 
+yDist      #calc "($y_max - $y_min) * $convertToMeters";
+yDistMin   #calc "$yDist * -1";
+
 vertices
 (
     ($x_min $y_min $z_min)
@@ -70,7 +73,7 @@ boundary
         type cyclic;
         neighbourPatch bottom;
         transform translational;
-        separationVector computed;
+        separationVector (0 $yDistMin 0);
         faces
         (
             (2 3 7 6)
@@ -81,7 +84,7 @@ boundary
         type cyclic;
         neighbourPatch top;
         transform translational;
-        separationVector computed;
+        separationVector (0 $yDist 0);
         faces
         (
             (0 1 5 4)

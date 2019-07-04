@@ -120,7 +120,7 @@ mean : float
             return 
 
         # Calculated volumes if volume weighted is enabled but instance does not have a cellVolumes attribute
-        if volume_weighted and not hasattr(self, "cellVolumes"):
+        if volume_weighted and not hasattr(self, "cell_volumes"):
             self.calc_cell_volumes()
 
         total = 0
@@ -204,7 +204,7 @@ RETURNS
 porosity : float
     Calculated porosity."""
 
-        if not hasattr(self, "cellVolumes"):
+        if not hasattr(self, "cell_volumes"):
             self.calc_cell_volumes()
         if region and not len(region) == 6:
             print("ERROR: provided argument 'region' does not have length of 6. 'region' should be a list with "
@@ -269,7 +269,7 @@ inRegion : bool
             return
 
         if search_type == "center":
-            if not hasattr(self, "cellCenters"):
+            if not hasattr(self, "cell_centers"):
                 self.calc_cell_centers()
             center = self.cell_centers[cell_id]
             if region[0] <= center[0] <= region[1] \
@@ -487,7 +487,7 @@ margin : float, int
     Margin to be excluded from calculations on all sides of the domain."""
 
     # Check if the VTKObject instance contains cell volumes and the x component
-    if not hasattr(vtk_obj, "cellVolumes"):
+    if not hasattr(vtk_obj, "cell_volumes"):
         vtk_obj.calc_cell_volumes()
     if "U_x" not in vtk_obj.cell_data:
         if "U" not in vtk_obj.cell_data:

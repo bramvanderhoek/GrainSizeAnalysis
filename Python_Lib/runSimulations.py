@@ -50,10 +50,10 @@ snappy_refinement = False
 post_processing_margin = (domain["xmax"] - domain["xmin"]) * 0.1
 
 # Number of allowed failed cases before the program stops
-n_allowed_fails = 10
+n_allowed_fails = 1
 
 # Number of simulations to do during Monte Carlo
-n_simulations = 2
+n_simulations = 1
 # Number of cores to use for each simulation
 cores_per_sim = 1
 # Whether or not to run on cluster (non-cluster simulations not yet implemented)
@@ -80,9 +80,9 @@ scripts = ["/trinity/opt/apps/software/openFoam/version6/OpenFOAM-6/etc/bashrc"]
 # Name of the base directory to perform the simulations in
 base_dir = "../../Simulations"
 # Name of this batch of simulations
-run_name = "Cyclic_separationVector"
+run_name = "Cyclic_fixed_mesh_test"
 # Directory to copy the base OpenFOAM case from
-basecase_dir = "../../baseCase_cyclic"
+basecase_dir = "../baseCase_cyclic"
 
 this_dir = os.getcwd()
 
@@ -126,7 +126,7 @@ if pre_process:
 
     if not os.path.isdir("baseCase"):
         os.mkdir("baseCase")
-    subprocess.call(["cp", "-rf", "{0}{1}*".format(basecase_dir, os.sep), "baseCase{0}".format(os.sep)])
+    subprocess.call("cp -rf {0}{1}* baseCase{1}".format(basecase_dir, os.sep), shell=True)
 
     # Get absolute paths to stl, baseCase & cases directories
     stl_dir = os.path.realpath("stl")
@@ -155,8 +155,8 @@ if pre_process:
         lim_file.close()
 
         # Update the blockMeshDict, snappyHexMeshDict and decomposeParDict of the case according to given parameters
-        preP.update_blockMeshDict("system", domain["xmin"], domain["xmax"], domain["ymin"], domain["ymax"], domain["height"], mindist=model["mindist"])
-        preP.update_snappyHexMeshDict("system", "stl", location_in_mesh, refinement=snappy_refinement, castellated_mesh=True, snap=True if not snappy_refinement else False)
+        preP.update_blockMeshDict("system", domain, mindist=model["mindist"])
+        preP.update_snappyHexMeshDict("system", "stl", domain["height"], model["mindist"], location_in_mesh, refinement=snappy_refinement, castellated_mesh=True, snap=True if not snappy_refinement else False)
         preP.update_decomposeParDict("system", cores_per_sim)
         preP.update_extrudeMeshDict("system", domain["height"])
         preP.create_pre_processing_script("{0}_{1}".format(run_name, i), cores_per_sim, tasks_per_node, threads_per_core, partition, modules, scripts, refinement=snappy_refinement)
@@ -211,7 +211,7 @@ if pre_process:
                         location_in_mesh = map(float, lim_file.readline().split())
                         lim_file.close()
 
-                        preP.update_snappyHexMeshDict("system", "stl", location_in_mesh, refinement=snappy_refinement, castellated_mesh=False, snap=True)
+                        preP.update_snappyHexMeshDict("system", "stl", domain["height"], model["mindist"], location_in_mesh, refinement=snappy_refinement, castellated_mesh=False, snap=True)
                         subprocess.call(["sbatch", "{0}{1}preprocessing_1.sh".format(case_dir, os.sep), "&"])
                         os.chdir(base_dir)
                     else:
@@ -241,8 +241,7 @@ if pre_process:
                 location_in_mesh = map(float, lim_file.readline().split())
                 lim_file.close()
 
-                preP.update_snappyHexMeshDict("system", "stl", location_in_mesh, refinement=snappy_refinement,
-                                              castellated_mesh=False, snap=True)
+                preP.update_snappyHexMeshDict("system", "stl", domain["height"], model["mindist"], location_in_mesh, refinement=snappy_refinement, castellated_mesh=False, snap=True)
                 subprocess.call(["chmod", "+x", "{0}{1}preprocessing_1.sh".format(case_dir, os.sep)])
                 subprocess.call(["./preprocessing_1.sh"])
             finished_cases.append(case_dir)
@@ -259,8 +258,7 @@ if simulations:
             print("WARNING: case directory '{0}_{1}' does not exist, skipping this case".format(run_name, i))
             continue
         os.chdir(case_dir)
-        preP.create_simulation_script("{0}_{1}".format(run_name, i), cores_per_sim, tasks_per_node, threads_per_core, partition,
-                                      modules, scripts)
+        preP.create_simulation_script("{0}_{1}".format(run_name, i), cores_per_sim, tasks_per_node, threads_per_core, partition, modules, scripts)
         os.chdir(base_dir)
 
     n_sim_fails = 0
@@ -435,5 +433,7 @@ if post_process:
         case_result.close()
 
         out_file.write("{0}\t{1}\t{2}\n".format("{0}_{1}".format(run_name, i), por, k))
+
+        os.chdir(base_dir)
 
     out_file.close()

@@ -5,7 +5,7 @@ import os
 import numpy as np
 
 
-def update_blockMeshDict(path, xmin, xmax, ymin, ymax, height, mindist=None, nx=100, ny=100):
+def update_blockMeshDict(path, domain, mindist=None, nx=100, ny=100):
     """Replaces the minimum and maximum extents of the blockMeshDict found by the path according to xmin, xmax, ymin & ymax.
 If mindist is provided, calculate the required amount of cells so that two cells fit within mindist diagonally,
 otherwise nx and ny define the amount of cells.
@@ -14,22 +14,30 @@ PARAMETERS
 ----------
 path : str
     Path to the folder where the blockMeshDict file is located.
-xmin : float, int
-    Minimum x-axis extent of the mesh.
-xmax : float, int
-    Maximum x-axis extent of the mesh.
-ymin : float, int
-    Minimum y-axis extent of the mesh.
-ymax : float, int
-    Maximum y-axis extent of the mesh.
-height : float, int
-    Height of the mesh (size along z-axis).
+domain : dict
+    Dictionary containing parameters of the modelling domain.
+
+    Mandatory keywords:
+        xmin : int, float
+            Lower value of the domain size along the x-axis (mm).
+        xmax : int, float
+            Upper value of the domain size along the x-axis (mm).
+        ymin : int, float
+            Lower value of the domain size along the y-axis (mm).
+        ymax : int, float
+            Upper value of the domain size along the y-axis (mm).
+        height : int, float
+            Height of the domain (i.e. its thickness along the z-axis) (mm).
+
 mindist : float, int
     Minimum distance between grains in the model.
 nx : int
     Number of cells along x-axis if mindist is not used.
 ny : int
     Number of cells along y-axis if mindist is not used."""
+
+    xmax, xmin, ymax, ymin = domain["xmax"], domain["xmin"], domain["ymax"], domain["ymin"]
+    height = domain["height"]
 
     bmd_old = open("{0}{1}blockMeshDict".format(path, os.sep), "r")
     bmd_new = open("{0}{1}blockMeshDict_new".format(path, os.sep), "w")
@@ -65,7 +73,7 @@ ny : int
     os.replace("{0}{1}blockMeshDict_new".format(path, os.sep), "{0}{1}blockMeshDict".format(path, os.sep))
 
 
-def update_snappyHexMeshDict(path, stl_filename, location_in_mesh, refinement=False, castellated_mesh=True, snap=True):
+def update_snappyHexMeshDict(path, stl_filename, height, mindist, location_in_mesh, refinement=False, castellated_mesh=True, snap=True):
     """Update snappyHexMeshDict with new .stl filename and point in mesh.
 
 PARAMETERS
@@ -74,6 +82,10 @@ path : str
     Path to the folder where the snappyHexMeshDict is located.
 stl_filename : str
     Filename of the stl file which will be incorporated into the snappyHexMeshDict.
+height : int, float
+    Height of the domain (i.e. its thickness along the z-axis) (mm).
+mindist : float, int
+    Minimum distance between grains in the model (mm).
 location_in_mesh : array_like
     Array of length 3 containing the coordinates to a random location inside of the mesh.
 refinement : bool
@@ -82,6 +94,13 @@ castellated_mesh : bool
     Whether or not castellatedMesh step should be enabled in the snappyHexMeshDict.
 snap : bool
     Whether or not the snap step should be enabled in the snappyHexMeshDict."""
+
+    # Convert to meters
+    height = height * 0.001
+    mindist = mindist * 0.001
+
+    # Calculate approximate minimum cell size along x and y-dimensions
+    cellsize = mindist / np.sqrt(8)
 
     shmd_old = open("{0}{1}snappyHexMeshDict".format(path, os.sep), "r")
     shmd_new = open("{0}{1}snappyHexMeshDict_new".format(path, os.sep), "w")
@@ -110,6 +129,10 @@ snap : bool
 
         if line.strip().startswith("locationInMesh"):
             line = "\tlocationInMesh ({0}e-3 {1}e-3 {2}e-3);\n".format(*[coord for coord in location_in_mesh])
+
+        if line.strip().startswith("minVol") and not line.strip().startswith("minVolRatio"):
+            # Set minimum volume to a fraction of expected cell volume
+            line = "\tminVol\t{0};\n".format(cellsize**2 * height * 0.0001)
         shmd_new.write(line)
 
     shmd_old.close()

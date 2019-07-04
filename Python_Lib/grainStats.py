@@ -4,7 +4,8 @@
 from scipy.stats import truncnorm 
 from numpy import log, exp, sqrt
 
-def generateTruncLogNormal(n, rmin, rmax, rmean, rstd):
+
+def generate_trunc_log_normal(n, rmin, rmax, rmean, rstd):
     """Generates a realization of a truncated log normal distribution.
 
 PARAMETERS
@@ -17,8 +18,8 @@ rmax : float, int
     Maximum value of the distribution.
 rmean : float, int
     Mean value of the distribution.
-restd : float, int
-    Standard deviation of the dsitribution.
+rstd : float, int
+    Standard deviation of the distribution.
 
 RETURNS
 -------
@@ -37,10 +38,11 @@ vals : array
     # Generate n values based on the truncated standard normal distribution
     vals = truncnorm.rvs(a, b, size=n)
 
-    # Trandform the values back to a log normal distribution
+    # Transform the values back to a log normal distribution
     vals = exp(vals * log_rstd + log_rmean)
 
     return vals
+
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
@@ -52,7 +54,7 @@ if __name__ == "__main__":
     rmean = 0.4
     rstd = 0.25
 
-    dist = generateTruncLogNormal(n, rmin, rmax, rmean, rstd)
+    dist = generate_trunc_log_normal(n, rmin, rmax, rmean, rstd)
     print(np.mean(dist))
 
     fig, ax = plt.subplots()

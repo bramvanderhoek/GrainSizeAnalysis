@@ -12,6 +12,22 @@ import preProcessing as preP
 ########################################
 
 # Dictionary defining the model for the grain size distribution
+# Parameters:
+#   distribution_type : str
+#       Distribution to be used when generating grain sizes (options: "truncLogNormal").
+#   rmin : float, int
+#       Minimum radius to be used for the grain size distribution (mm).
+#   rmax : float, int
+#       Maximum radius to be used for the grain size distribution (mm).
+#   rmean : float, int
+#       Mean radius to be used for the grain size distribution (mm).
+#   rstd : float, int
+#       Standard deviation of radius to be used for the grain size distribution (mm).
+#   mindist : float, int
+#       Minimum distance between grains when placing them in the model (mm).
+#   seed : bool, int
+#       Seed to be used when generating realization of grain size distribution.
+#       If it is set to False, no seed will be used.
 model = dict(distribution_type="truncLogNormal",
              rmin=0.05,
              rmax=0.8,
@@ -20,11 +36,14 @@ model = dict(distribution_type="truncLogNormal",
              mindist=0.025,
              seed=False)
 
+# TODO: implement random seed for generating domain
+
 ############################
 ####    DOMAIN SIZE     ####
 ############################
 
 # Dictionary defining the properties of the model domain
+
 domain = dict(xmin=0,
               xmax=4,
               ymin=0,
@@ -43,9 +62,13 @@ pre_process = True
 simulations = True
 post_process = True
 
+# Whether or not to overwrite stl files if they already exist
+stl_overwrite = True
+
 # Whether or not to perform mesh refinement around grains during pre-processing
 snappy_refinement = False
 
+# TODO: make margin dependent on type of simulation? (cyclic BC vs. symmetryPlane BC)
 # Margin around the edges of the domain that will be ignored during post-processing
 post_processing_margin = (domain["xmax"] - domain["xmin"]) * 0.1
 
@@ -95,6 +118,18 @@ if not os.path.isdir(base_dir):
     os.mkdir(base_dir)
 os.chdir(base_dir)
 
+# Write settings to file
+if not os.path.isfile("settings.txt"):
+    settings_file = open("settings.txt", "w")
+    header_items = ["run_name", "dist_type", "rmin", "rmax", "rmean", "rstd", "mindist", "seed", "xmin", "xmax", "ymin", "ymax", "por", "por_tol", "height"]
+    settings_file.write("{0:<31} {1:<15} {2:<7} {3:<7} {4:<7} {5:<7} {6:<7} {7:<15} {8:<7} {9:<7} {10:<7} {11:<7} {12:<7} {13:<7} {14:<7}\n".format(*header_items))
+else:
+    settings_file = open("settings.txt", "a+")
+setting_items = [run_name[:31], model["distribution_type"], model["rmin"], model["rmax"], model["rmean"], model["rstd"], model["mindist"], model["seed"],
+                 domain["xmin"], domain["xmax"], domain["ymin"], domain["ymax"], domain["por"], domain["por_tolerance"], domain["height"]]
+settings_file.write("{0:<31} {1:<15} {2:<7} {3:<7} {4:<7} {5:<7} {6:<7} {7:<15} {8:<7} {9:<7} {10:<7} {11:<7} {12:<7} {13:<7} {14:<7}\n".format(*setting_items))
+settings_file.close()
+
 ### DOMAIN GENERATION ###
 
 if generate_domain:
@@ -108,8 +143,13 @@ if generate_domain:
             os.mkdir("{0}_{1}".format(run_name, i))
         os.chdir("{0}_{1}".format(run_name, i))
 
-        # Generate and save model as .stl file
-        randomCircles.create_model(model, domain, stl_filename="stl")
+        if not os.path.isfile("stl.stl") or stl_overwrite:
+            if stl_overwrite:
+                print("Overwriting stl file 'stl{0}{1}_{2}{0}stl.stl'".format(os.sep, run_name, i))
+            # Generate and save model as .stl file
+            randomCircles.create_model(model, domain, stl_filename="stl")
+        else:
+            print("WARNING: stl{0}{1}_{2}{0}stl.stl already exists, skipping this directory".format(os.sep, run_name, i))
         os.chdir("..")
     os.chdir("..")
 

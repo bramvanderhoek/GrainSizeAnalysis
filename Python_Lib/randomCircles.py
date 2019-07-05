@@ -214,6 +214,8 @@ distribution : dict
             Standard deviation of grain radius (mm).
         mindist : int, float
             Minimum distance between grains (mm).
+        seed : bool, int
+            If False, no specific seed will be used, else should be a seed for generating a realization of the grain size distribution.
             
 domain : dict
     Dictionary containing parameters of the modelling domain.
@@ -273,6 +275,8 @@ plotting : bool
     # Generate random points
     x = np.random.rand(number_of_points) * (xmax - xmin) + xmin
     y = np.random.rand(number_of_points) * (ymax - ymin) + ymin
+
+    # TODO: implement seed
 
     # Check which type of distribution to use (only one at the moment).
     if distribution["distribution_type"] == "truncLogNormal":

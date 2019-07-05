@@ -35,6 +35,8 @@ vals : array
     # Convert min and max for normal distribution to min and max for standard normal distribution
     a, b = (log_rmin - log_rmean) / log_rstd, (log_rmax - log_rmean) / log_rstd
 
+    # TODO: implement seed.
+
     # Generate n values based on the truncated standard normal distribution
     vals = truncnorm.rvs(a, b, size=n)
 

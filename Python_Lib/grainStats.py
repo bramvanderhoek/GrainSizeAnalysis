@@ -3,9 +3,10 @@
 
 from scipy.stats import truncnorm 
 from numpy import log, exp, sqrt
+import numpy as np
 
 
-def generate_trunc_log_normal(n, rmin, rmax, rmean, rstd):
+def generate_trunc_log_normal(n, rmin, rmax, rmean, rstd, seed=False):
     """Generates a realization of a truncated log normal distribution.
 
 PARAMETERS
@@ -20,6 +21,8 @@ rmean : float, int
     Mean value of the distribution.
 rstd : float, int
     Standard deviation of the distribution.
+seed : bool, int
+    If provided, use seed to generate realization.
 
 RETURNS
 -------
@@ -35,7 +38,8 @@ vals : array
     # Convert min and max for normal distribution to min and max for standard normal distribution
     a, b = (log_rmin - log_rmean) / log_rstd, (log_rmax - log_rmean) / log_rstd
 
-    # TODO: implement seed.
+    if seed:
+        np.random.seed(seed)
 
     # Generate n values based on the truncated standard normal distribution
     vals = truncnorm.rvs(a, b, size=n)
@@ -48,7 +52,6 @@ vals : array
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-    import numpy as np
 
     n = 1000000
     rmin = 0.01

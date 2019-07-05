@@ -265,6 +265,7 @@ plotting : bool
     rmean = distribution["rmean"]
     rstd = distribution["rstd"]
     mindist = distribution["mindist"]
+    seed = distribution["seed"]
 
     # Calculate mesh area
     mesh_area = (xmax - xmin) * (ymax - ymin)
@@ -281,7 +282,7 @@ plotting : bool
     # Check which type of distribution to use (only one at the moment).
     if distribution["distribution_type"] == "truncLogNormal":
         # Generate grains based on truncated log normal distribution
-        r = generate_trunc_log_normal(number_r, rmin, rmax, rmean, rstd)
+        r = generate_trunc_log_normal(number_r, rmin, rmax, rmean, rstd, seed)
 
     # Calculate theoretical porosity based on generated realization of grain size distribution
     por_new = calc_porosity(r, mesh_area)

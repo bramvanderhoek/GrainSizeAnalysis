@@ -34,7 +34,7 @@ model = dict(distribution_type="truncLogNormal",
              rmean=0.35,
              rstd=0.25,
              mindist=0.025,
-             seed=False)
+             seed=100)
 
 # TODO: implement random seed for generating domain
 
@@ -43,7 +43,21 @@ model = dict(distribution_type="truncLogNormal",
 ############################
 
 # Dictionary defining the properties of the model domain
-
+# Parameters:
+# xmin : int, float
+#   Minimum x-axis extent of the domain
+# xmax : int, float
+#   Maximum x-axis extent of the domain
+# ymin : int, float
+#   Minimum y-axis extent of the domain
+# ymax : int, float
+#   Maximum y-axis extent of the domain
+# por : float
+#   Porosity of the model
+# por_tolerance : float
+#   Fraction of por that the porosity is allowed to deviate
+# height : float, int
+#   Height of the model, i.e. it's thickness along the z-axis
 domain = dict(xmin=0,
               xmax=4,
               ymin=0,
@@ -62,9 +76,18 @@ pre_process = True
 simulations = True
 post_process = True
 
+# Since the seed entry of the model dictionary will be updated per simulation, keep track of the provided base seed
+if model["seed"]:
+    if isinstance(model["seed"], bool):
+        base_seed = model["seed"] = np.random.randint(0, 10**9)
+    else:
+        base_seed = model["seed"]
+
 # Whether or not to overwrite stl files if they already exist
 stl_overwrite = True
 
+# Whether or not to perform mesh snapping to grain surfaces during pre-processing
+snapping = True
 # Whether or not to perform mesh refinement around grains during pre-processing
 snappy_refinement = False
 
@@ -121,11 +144,11 @@ os.chdir(base_dir)
 # Write settings to file
 if not os.path.isfile("settings.txt"):
     settings_file = open("settings.txt", "w")
-    header_items = ["run_name", "dist_type", "rmin", "rmax", "rmean", "rstd", "mindist", "seed", "xmin", "xmax", "ymin", "ymax", "por", "por_tol", "height"]
+    header_items = ["run_name", "dist_type", "rmin", "rmax", "rmean", "rstd", "mindist", "base_seed", "xmin", "xmax", "ymin", "ymax", "por", "por_tol", "height"]
     settings_file.write("{0:<31} {1:<15} {2:<7} {3:<7} {4:<7} {5:<7} {6:<7} {7:<15} {8:<7} {9:<7} {10:<7} {11:<7} {12:<7} {13:<7} {14:<7}\n".format(*header_items))
 else:
     settings_file = open("settings.txt", "a+")
-setting_items = [run_name[:31], model["distribution_type"], model["rmin"], model["rmax"], model["rmean"], model["rstd"], model["mindist"], model["seed"],
+setting_items = [run_name[:31], model["distribution_type"], model["rmin"], model["rmax"], model["rmean"], model["rstd"], model["mindist"], model["seed"] if model["seed"] else False,
                  domain["xmin"], domain["xmax"], domain["ymin"], domain["ymax"], domain["por"], domain["por_tolerance"], domain["height"]]
 settings_file.write("{0:<31} {1:<15} {2:<7} {3:<7} {4:<7} {5:<7} {6:<7} {7:<15} {8:<7} {9:<7} {10:<7} {11:<7} {12:<7} {13:<7} {14:<7}\n".format(*setting_items))
 settings_file.close()
@@ -147,6 +170,9 @@ if generate_domain:
             if stl_overwrite:
                 print("Overwriting stl file 'stl{0}{1}_{2}{0}stl.stl'".format(os.sep, run_name, i))
             # Generate and save model as .stl file
+            if model["seed"]:
+                # If seed is in use, update it for this specific simulation
+                model["seed"] = base_seed + i
             randomCircles.create_model(model, domain, stl_filename="stl")
         else:
             print("WARNING: stl{0}{1}_{2}{0}stl.stl already exists, skipping this directory".format(os.sep, run_name, i))
@@ -196,7 +222,7 @@ if pre_process:
 
         # Update the blockMeshDict, snappyHexMeshDict and decomposeParDict of the case according to given parameters
         preP.update_blockMeshDict("system", domain, mindist=model["mindist"])
-        preP.update_snappyHexMeshDict("system", "stl", domain["height"], model["mindist"], location_in_mesh, refinement=snappy_refinement, castellated_mesh=True, snap=True if not snappy_refinement else False)
+        preP.update_snappyHexMeshDict("system", "stl", domain["height"], model["mindist"], location_in_mesh, refinement=snappy_refinement, castellated_mesh=True, snap=snapping if not snappy_refinement else False)
         preP.update_decomposeParDict("system", cores_per_sim)
         preP.update_extrudeMeshDict("system", domain["height"])
         preP.create_pre_processing_script("{0}_{1}".format(run_name, i), cores_per_sim, tasks_per_node, threads_per_core, partition, modules, scripts, refinement=snappy_refinement)
@@ -281,7 +307,7 @@ if pre_process:
                 location_in_mesh = map(float, lim_file.readline().split())
                 lim_file.close()
 
-                preP.update_snappyHexMeshDict("system", "stl", domain["height"], model["mindist"], location_in_mesh, refinement=snappy_refinement, castellated_mesh=False, snap=True)
+                preP.update_snappyHexMeshDict("system", "stl", domain["height"], model["mindist"], location_in_mesh, refinement=snappy_refinement, castellated_mesh=False, snap=snapping)
                 subprocess.call(["chmod", "+x", "{0}{1}preprocessing_1.sh".format(case_dir, os.sep)])
                 subprocess.call(["./preprocessing_1.sh"])
             finished_cases.append(case_dir)

@@ -73,9 +73,9 @@ domain = dict(xmin=0,
 ####################################
 
 # Which steps to perform
-generate_domain = True
-pre_process = True
-simulations = True
+generate_domain = False
+pre_process = False
+simulations = False
 post_process = True
 
 # Whether or not to overwrite stl files if they already exist
@@ -91,15 +91,15 @@ snappy_refinement = False
 post_processing_margin = (domain["xmax"] - domain["xmin"]) * 0.1
 
 # Number of allowed failed cases before the program stops
-n_allowed_fails = 1
+n_allowed_fails = 10
 
 # Number of simulations to do during Monte Carlo
-n_simulations = 1
+n_simulations = 10
 # Number of cores to use for each simulation
 # NOTE: using multiple cores for a case with cyclic BC is error prone
 cores_per_sim = 1
 # Whether or not to run on cluster (non-cluster simulations not yet implemented)
-cluster = False
+cluster = True
 # Username of account of cluster from which this script is being run
 cluster_user = "3979202"
 # Number of simulations to run in parallel at one time (value higher than 1 only supported for cluster)
@@ -120,9 +120,9 @@ modules = ["opt/all",
 scripts = ["/trinity/opt/apps/software/openFoam/version6/OpenFOAM-6/etc/bashrc"]
 
 # Name of the base directory to perform the simulations in
-base_dir = "../../Simulations"
+base_dir = "../Simulations"
 # Name of this batch of simulations
-run_name = "Snap_Test"
+run_name = "Test"
 # Directory to copy the base OpenFOAM case from
 basecase_dir = "../baseCase_cyclic"
 
@@ -453,8 +453,7 @@ if post_process:
                 os.chdir(new_case_dir)
                 subprocess.call(["sbatch", "{0}{1}postprocessing.sh".format(new_case_dir, os.sep), "&"])
                 os.chdir(base_dir)
-
-            print("Cases running/in queue: {0}".format(active_cases))
+                print("Cases running/in queue: {0}".format(active_cases))
             
             # Give the cluster some time to put the scripts into the queue
             time.sleep(5)
@@ -501,6 +500,10 @@ if post_process:
             print("WARNING: case directory '{0}_{1}' does not exist, skipping this case".format(run_name, i))
             continue
         os.chdir(case_dir)
+
+        if not os.path.isfile("out.dat"):
+            print("WARNING: case '{0}_{1}' has no output file 'out.dat', skipping this case".format(run_name, i))
+            continue
 
         case_result = open("out.dat", "r")
         por, k = map(float, case_result.readline().strip().split(","))

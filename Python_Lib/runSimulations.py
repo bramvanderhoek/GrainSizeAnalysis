@@ -176,7 +176,13 @@ if generate_domain:
             if model["seed"]:
                 # If seed is in use, update it for this specific simulation
                 model["seed"] = base_seed + i
-            randomCircles.create_model(model, domain, stl_filename="stl")
+            por = randomCircles.create_model(model, domain, stl_filename="stl")
+            while not model["por"] - model["por"] * model["por_tolerance"] <= por <= model["por"] + model["por"] * model["por_tolerance"]:
+                print("Porosity not within the required tolerance, recreating geometry")
+                if model["seed"] is not False:
+                    print("WARNING: provided seed was unable to generate correct geometry, random seed will be used for case {0}".format(i))
+                    model["seed"] = np.random.randint(0, 10**9)
+                por = randomCircles.create_model(model, domain, stl_filename="stl")
         else:
             print("WARNING: stl{0}{1}_{2}{0}stl.stl already exists, skipping this directory".format(os.sep, run_name, i))
         os.chdir("..")

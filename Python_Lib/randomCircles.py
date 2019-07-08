@@ -245,7 +245,12 @@ path : str
 points_per_circle : int
     Number of points representing a single circle in the output .stl file (more points give a more accurate representation).
 plotting : bool
-    Whether or not to plot output and intermediate steps."""
+    Whether or not to plot output and intermediate steps.
+
+RETURNS
+-------
+por_final : float
+    The final porosity of the model."""
     
     # Get domain extents from dictionary
     xmin = domain["xmin"]
@@ -332,6 +337,8 @@ plotting : bool
     rmean_final = np.mean(keeper_r)
     por_final = calc_porosity(keeper_r, mesh_area)
 
+    # TODO: throw warning if final porosity not in specified porosity tolerance, main script can then decide whether or not to start over.
+
     por_file = open("{0}{1}porosity.dat".format(path, os.sep), "w")
     por_file.write(str(por_final) + "\n")
     por_file.close()
@@ -382,6 +389,8 @@ plotting : bool
         mesh_object = stlTools.create_mesh_object(faces)
         mesh_objects.append(mesh_object)
     stlTools.write_stl(mesh_objects, "{0}{1}{2}".format(path, os.sep, stl_filename))
+
+    return por_final
 
 
 if __name__ == "__main__":

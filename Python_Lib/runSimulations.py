@@ -177,7 +177,7 @@ if generate_domain:
                 # If seed is in use, update it for this specific simulation
                 model["seed"] = base_seed + i
             por = randomCircles.create_model(model, domain, stl_filename="stl")
-            while not model["por"] - model["por"] * model["por_tolerance"] <= por <= model["por"] + model["por"] * model["por_tolerance"]:
+            while not domain["por"] - domain["por"] * domain["por_tolerance"] <= por <= domain["por"] + domain["por"] * domain["por_tolerance"]:
                 print("Porosity not within the required tolerance, recreating geometry")
                 if model["seed"] is not False:
                     print("WARNING: provided seed was unable to generate correct geometry, random seed will be used for case {0}".format(i))
@@ -521,3 +521,5 @@ if post_process:
         os.chdir(base_dir)
 
     out_file.close()
+
+# TODO: clean up case directories to save space for large ensembles?

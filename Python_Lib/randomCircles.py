@@ -274,10 +274,10 @@ plotting : bool
     number_r = round(mesh_area*(1 - por)/(np.pi*rmean**2))
 
     # Generate random points
+    if seed is not False:
+        np.random.seed(seed)
     x = np.random.rand(number_of_points) * (xmax - xmin) + xmin
     y = np.random.rand(number_of_points) * (ymax - ymin) + ymin
-
-    # TODO: implement seed
 
     # Check which type of distribution to use (only one at the moment).
     if distribution["distribution_type"] == "truncLogNormal":

@@ -48,6 +48,12 @@ ny : int
         nx = int(np.ceil((xmax - xmin) / cellsize))
         ny = int(np.ceil((ymax - ymin) / cellsize))
 
+    y_dist = ymax - ymin
+
+    top_found = False
+    bottom_found = False
+    top_cyclic = False
+    bottom_cyclic = False
     for line in bmd_old.readlines():
         if line.startswith("x_min"):
             line = "x_min\t{0};\n".format(xmin)
@@ -65,6 +71,23 @@ ny : int
             line = "nx\t{0};\n".format(nx)
         elif line.startswith("ny"):
             line = "ny\t{0};\n".format(ny)
+        elif line.strip().startswith("top"):
+            top_found = True
+        elif top_found and line.strip().startswith("type"):
+            if line.strip().split()[-1] == "cyclic;":
+                top_cyclic = True
+        elif top_found and top_cyclic and line.strip().startswith("separationVector"):
+            line = "\t\tseparationVector (0 -{0}e-3 0);\n".format(y_dist)
+            top_found = False
+        elif line.strip().startswith("bottom"):
+            bottom_found = True
+        elif bottom_found and line.strip().startswith("type"):
+            if line.strip().split()[-1] == "cyclic;":
+                bottom_cyclic = True
+        elif bottom_found and bottom_cyclic and line.strip().startswith("separationVector"):
+            line = "\t\tseparationVector (0 {0}e-3 0);\n".format(y_dist)
+            bottom_found = False
+
         bmd_new.write(line)
 
     bmd_old.close()
@@ -383,7 +406,7 @@ status : bool
     last_word = os.popen("tail {0}".format(log_file)).read().split()[-1]
 
     # If log file ends with the word 'End', we know that the process ended properly, otherwise something went wrong
-    if last_word == "End":
+    if last_word == "End" or last_word == "run":
         status = True
     else:
         status = False

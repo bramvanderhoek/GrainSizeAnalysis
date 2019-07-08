@@ -27,16 +27,18 @@ import preProcessing as preP
 #       Minimum distance between grains when placing them in the model (mm).
 #   seed : bool, int
 #       Seed to be used when generating realization of grain size distribution.
-#       If it is set to False, no seed will be used.
+#       For each simulation the seed will be incremented by 1 to generate a different domain.
+#       Set to True to generate a random, but known, seed,
+#       set to False to use numpy's internal seed (you won't be able to reproduce your results with this)
 model = dict(distribution_type="truncLogNormal",
              rmin=0.05,
              rmax=0.8,
              rmean=0.35,
              rstd=0.25,
              mindist=0.025,
-             seed=100)
+             seed=646426512)
 
-# TODO: implement random seed for generating domain
+# TODO: implement different ways of placing grains (random, regular, alternating)
 
 ############################
 ####    DOMAIN SIZE     ####
@@ -76,13 +78,6 @@ pre_process = True
 simulations = True
 post_process = True
 
-# Since the seed entry of the model dictionary will be updated per simulation, keep track of the provided base seed
-if model["seed"]:
-    if isinstance(model["seed"], bool):
-        base_seed = model["seed"] = np.random.randint(0, 10**9)
-    else:
-        base_seed = model["seed"]
-
 # Whether or not to overwrite stl files if they already exist
 stl_overwrite = True
 
@@ -101,6 +96,7 @@ n_allowed_fails = 1
 # Number of simulations to do during Monte Carlo
 n_simulations = 1
 # Number of cores to use for each simulation
+# NOTE: using multiple cores for a case with cyclic BC is error prone
 cores_per_sim = 1
 # Whether or not to run on cluster (non-cluster simulations not yet implemented)
 cluster = False
@@ -126,7 +122,7 @@ scripts = ["/trinity/opt/apps/software/openFoam/version6/OpenFOAM-6/etc/bashrc"]
 # Name of the base directory to perform the simulations in
 base_dir = "../../Simulations"
 # Name of this batch of simulations
-run_name = "Cyclic_fixed_mesh_test"
+run_name = "Snap_Test"
 # Directory to copy the base OpenFOAM case from
 basecase_dir = "../baseCase_cyclic"
 
@@ -141,6 +137,13 @@ if not os.path.isdir(base_dir):
     os.mkdir(base_dir)
 os.chdir(base_dir)
 
+# Since the seed entry of the model dictionary will be updated per simulation, keep track of the provided base seed
+if model["seed"] is not False:
+    if model["seed"] is True:
+        base_seed = model["seed"] = np.random.randint(0, 10**9)
+    else:
+        base_seed = model["seed"]
+
 # Write settings to file
 if not os.path.isfile("settings.txt"):
     settings_file = open("settings.txt", "w")
@@ -148,7 +151,7 @@ if not os.path.isfile("settings.txt"):
     settings_file.write("{0:<31} {1:<15} {2:<7} {3:<7} {4:<7} {5:<7} {6:<7} {7:<15} {8:<7} {9:<7} {10:<7} {11:<7} {12:<7} {13:<7} {14:<7}\n".format(*header_items))
 else:
     settings_file = open("settings.txt", "a+")
-setting_items = [run_name[:31], model["distribution_type"], model["rmin"], model["rmax"], model["rmean"], model["rstd"], model["mindist"], model["seed"] if model["seed"] else False,
+setting_items = [run_name[:31], model["distribution_type"], model["rmin"], model["rmax"], model["rmean"], model["rstd"], model["mindist"], model["seed"],
                  domain["xmin"], domain["xmax"], domain["ymin"], domain["ymax"], domain["por"], domain["por_tolerance"], domain["height"]]
 settings_file.write("{0:<31} {1:<15} {2:<7} {3:<7} {4:<7} {5:<7} {6:<7} {7:<15} {8:<7} {9:<7} {10:<7} {11:<7} {12:<7} {13:<7} {14:<7}\n".format(*setting_items))
 settings_file.close()

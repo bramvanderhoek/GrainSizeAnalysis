@@ -1,6 +1,5 @@
 """grainStats.py: utilities to generate grain size distributions."""
 
-
 from scipy.stats import truncnorm 
 from numpy import log, exp, sqrt
 import numpy as np
@@ -38,7 +37,7 @@ vals : array
     # Convert min and max for normal distribution to min and max for standard normal distribution
     a, b = (log_rmin - log_rmean) / log_rstd, (log_rmax - log_rmean) / log_rstd
 
-    if seed:
+    if seed is not False:
         np.random.seed(seed)
 
     # Generate n values based on the truncated standard normal distribution

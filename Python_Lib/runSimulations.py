@@ -503,6 +503,7 @@ if post_process:
 
         if not os.path.isfile("out.dat"):
             print("WARNING: case '{0}_{1}' has no output file 'out.dat', skipping this case".format(run_name, i))
+            os.chdir(base_dir)
             continue
 
         case_result = open("out.dat", "r")

@@ -215,6 +215,9 @@ if pre_process:
         # Go into case directory
         os.chdir(case_dir)
 
+        if not os.path.isdir("constant{0}triSurface".format(os.sep)):
+            os.mkdir("constant{0}triSurface".format(os.sep))
+
         # Copy .stl file to the triSurface folder of the case
         subprocess.call(["cp", case_stl_file, "{0}{1}constant{1}triSurface".format(case_dir, os.sep)])
 
@@ -337,6 +340,7 @@ if simulations:
     finished_cases = []
 
     if cluster:
+        restart_cases = True
         while len(finished_cases) < n_simulations:
             # Start new cases if there are still waiting cases and there are free slots
             while waiting_cases and len(active_cases) < n_parallel_sims:
@@ -369,7 +373,7 @@ if simulations:
 
             for i in end_cases:
                 case = active_cases.pop(i)
-                if preP.check_log("{0}{1}simpleFoam.log".format(case, os.sep)):
+                if preP.check_log("{0}{1}simpleFoam.log".format(case, os.sep)) or not restart_cases:
                     finished_cases.append(case)
                     print("Finished cases: {0}".format(finished_cases))
                 else:
@@ -377,9 +381,9 @@ if simulations:
                     case_name = case.split(os.sep)[-1]
                     print("Case '{0}' failed to run properly. Current total number of fails: {1}/{2}".format(case_name, n_sim_fails, n_allowed_fails))
                     if n_sim_fails >= n_allowed_fails:
-                        print("Maximum amount of failed cases reached ({0}), quitting...".format(n_allowed_fails))
-                        # Add some code here to stop all other simulations?
-                        quit()
+                        print("Maximum amount of failed cases reached ({0}), no longer restarting cases.".format(n_allowed_fails))
+                        restart_cases = False
+                        finished_cases.append(case)
                     else:
                         print("Restarting case '{0}'".format(case_name))
                         waiting_cases.append(case)
@@ -397,8 +401,9 @@ if simulations:
                 print("Case '{0}' failed to run properly. Current total number of fails: {1}/{2}".format(
                     case_name, n_sim_fails, n_allowed_fails))
                 if n_sim_fails >= n_allowed_fails:
-                    print("Maximum amount of failed cases reached ({0}), quitting...".format(n_allowed_fails))
-                    quit()
+                    print("Maximum amount of failed cases reached ({0}), stopping simulations".format(n_allowed_fails))
+                    print("Case that caused final failure: {0}".format(case_name))
+                    break
                 else:
                     print("Restarting case '{0}'".format(case_name))
                     waiting_cases.append(case_dir)

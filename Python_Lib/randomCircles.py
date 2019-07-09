@@ -368,9 +368,10 @@ por_final : float
         if xmax > point_x > xmin and ymax > point_y > ymin:
             if point_y + keeper_r[i] < ymax:
                 point_y += (keeper_r[i] + mindist / 2)
-                break
             elif point_y - keeper_r[i] > ymin:
-                point_y -= (keeper_r[i] - mindist / 2)
+                point_y -= (keeper_r[i] + mindist / 2)
+            # Check with grains duplicated for periodicity too
+            if check_valid_grain_distances(point_x, point_y, 0, double_x, double_y, double_r):
                 break
 
     location_file = open("locationInMesh.dat", "w")

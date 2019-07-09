@@ -74,7 +74,7 @@ ny : int
         elif line.strip().startswith("top"):
             top_found = True
         elif top_found and line.strip().startswith("type"):
-            if line.strip().split()[-1] == "cyclic;":
+            if line.strip().split()[-1] == "cyclic;" or line.strip().split()[-1] == "cyclicAMI;":
                 top_cyclic = True
         elif top_found and top_cyclic and line.strip().startswith("separationVector"):
             line = "\t\tseparationVector (0 -{0}e-3 0);\n".format(y_dist)
@@ -82,7 +82,7 @@ ny : int
         elif line.strip().startswith("bottom"):
             bottom_found = True
         elif bottom_found and line.strip().startswith("type"):
-            if line.strip().split()[-1] == "cyclic;":
+            if line.strip().split()[-1] == "cyclic;" or line.strip().split()[-1] == "cyclicAMI;":
                 bottom_cyclic = True
         elif bottom_found and bottom_cyclic and line.strip().startswith("separationVector"):
             line = "\t\tseparationVector (0 {0}e-3 0);\n".format(y_dist)

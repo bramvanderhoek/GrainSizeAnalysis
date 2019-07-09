@@ -73,9 +73,9 @@ domain = dict(xmin=0,
 ####################################
 
 # Which steps to perform
-generate_domain = False
-pre_process = False
-simulations = False
+generate_domain = True
+pre_process = True
+simulations = True
 post_process = True
 
 # Whether or not to overwrite stl files if they already exist
@@ -91,15 +91,15 @@ snappy_refinement = False
 post_processing_margin = (domain["xmax"] - domain["xmin"]) * 0.1
 
 # Number of allowed failed cases before the program stops
-n_allowed_fails = 10
+n_allowed_fails = 2
 
 # Number of simulations to do during Monte Carlo
-n_simulations = 10
+n_simulations = 4
 # Number of cores to use for each simulation
 # NOTE: using multiple cores for a case with cyclic BC is error prone
 cores_per_sim = 1
 # Whether or not to run on cluster (non-cluster simulations not yet implemented)
-cluster = True
+cluster = False
 # Username of account of cluster from which this script is being run
 cluster_user = "3979202"
 # Number of simulations to run in parallel at one time (value higher than 1 only supported for cluster)
@@ -120,9 +120,9 @@ modules = ["opt/all",
 scripts = ["/trinity/opt/apps/software/openFoam/version6/OpenFOAM-6/etc/bashrc"]
 
 # Name of the base directory to perform the simulations in
-base_dir = "../Simulations"
+base_dir = "../../Simulations"
 # Name of this batch of simulations
-run_name = "Test"
+run_name = "Test_Fix"
 # Directory to copy the base OpenFOAM case from
 basecase_dir = "../baseCase_cyclic"
 
@@ -159,7 +159,7 @@ settings_file.close()
 ### DOMAIN GENERATION ###
 
 if generate_domain:
-    print("Starting domain generation")
+    print("\n### STARTING DOMAIN GENERATION ###\n\n")
     if not os.path.isdir("stl"):
         os.mkdir("stl")
     os.chdir("stl")
@@ -191,7 +191,7 @@ if generate_domain:
 ### PRE-PROCESSING ###
 
 if pre_process:
-    print("Starting pre-processing")
+    print("\n### STARTING PRE-PROCESSING ###\n\n")
     if not os.path.isdir("cases"):
         os.mkdir("cases")
 
@@ -257,8 +257,7 @@ if pre_process:
                 os.chdir(new_case_dir)
                 subprocess.call(["sbatch", "{0}{1}preprocessing{2}.sh".format(new_case_dir, os.sep, "_0" if snappy_refinement else ""), "&"])
                 os.chdir(base_dir)
-
-            print("Cases running/in queue: {0}".format(active_cases))
+                print("Cases running/in queue: {0}".format(active_cases))
 
             # Give the cluster some time to put the scripts into the queue
             time.sleep(5)
@@ -329,7 +328,7 @@ if pre_process:
 
 os.chdir(base_dir)
 if simulations:
-    print("Starting simulations")
+    print("\n### STARTING SIMULATIONS ###\n\n")
     for i in range(n_simulations):
         case_dir = os.path.realpath("cases{0}{1}_{2}".format(os.sep, run_name, i))
         if not os.path.isdir(case_dir):
@@ -418,7 +417,7 @@ if simulations:
 
 os.chdir(base_dir)
 if post_process:
-    print("Starting post-processing")
+    print("\n### STARTING POST-PROCESSING ###\n\n")
     for i in range(n_simulations):
         case_dir = os.path.realpath("cases{0}{1}_{2}".format(os.sep, run_name, i))
         if not os.path.isdir(case_dir):
@@ -429,6 +428,8 @@ if post_process:
         # Get filename of .vtk file of final iteration
         if not os.path.isdir("VTK"):
             print("WARNING: no directory 'VTK' in case directory '{0}_{1}', skipping this case".format(run_name, i))
+            os.chdir(base_dir)
+            continue
         os.chdir("VTK")
         vtk_files = []
         for item in os.listdir("."):
@@ -438,6 +439,10 @@ if post_process:
             print("WARNING: no .vtk files in 'VTK' directory of case '{0}_{1}', skipping this case".format(run_name, i))
         vtk_files.sort()
         vtk_file = vtk_files[-1]
+        if vtk_file.split("_")[-1] == "0":
+            print("WARNING: no .vtk files of timestep > 0 in 'VTK' directory of case '{0}_{1}', skipping this case".format(run_name, i))
+            os.chdir(base_dir)
+            continue
         os.chdir(case_dir)
 
         # Create script for running post-processing on cluster
@@ -454,6 +459,10 @@ if post_process:
             # Start new cases if there are still waiting cases and there are free slots
             while waiting_cases and len(active_cases) < n_parallel_sims:
                 new_case_dir = waiting_cases.pop(0)
+                if not os.path.isfile("{0}{1}postprocessing.sh".format(new_case_dir, os.sep)):
+                    print("WARNING: no 'postprocessing.sh' bash script in case '{0}', skipping case".format(new_case_dir.split(os.sep)[-1]))
+                    finished_cases.append(new_case_dir)
+                    continue
                 active_cases.append(new_case_dir)
                 # Put new case in queue (note the '&' which prevents the command from blocking the program)
                 os.chdir(new_case_dir)
@@ -488,6 +497,10 @@ if post_process:
     else:
         while waiting_cases:
             case_dir = waiting_cases.pop(0)
+            if not os.path.isfile("{0}{1}postprocessing.sh".format(case_dir, os.sep)):
+                print("WARNING: no 'postprocessing.sh' bash script in case '{0}', skipping case".format(case_dir.split(os.sep)[-1]))
+                finished_cases.append(case_dir)
+                continue
             os.chdir(case_dir)
             subprocess.call(["chmod", "+x", "postprocessing.sh"])
             subprocess.call(["./postprocessing.sh"])

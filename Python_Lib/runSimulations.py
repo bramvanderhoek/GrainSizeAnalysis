@@ -147,14 +147,19 @@ if model["seed"] is not False:
 # Write settings to file
 if not os.path.isfile("settings.txt"):
     settings_file = open("settings.txt", "w")
-    header_items = ["run_name", "dist_type", "rmin", "rmax", "rmean", "rstd", "mindist", "base_seed", "xmin", "xmax", "ymin", "ymax", "por", "por_tol", "height"]
-    settings_file.write("{0:<31} {1:<15} {2:<7} {3:<7} {4:<7} {5:<7} {6:<7} {7:<15} {8:<7} {9:<7} {10:<7} {11:<7} {12:<7} {13:<7} {14:<7}\n".format(*header_items))
+    header_items = ["run_name", "date/time", "dist_type", "rmin", "rmax", "rmean", "rstd", "mindist", "base_seed", "xmin", "xmax", "ymin", "ymax", "por", "por_tol", "height"]
+    settings_file.write("{0:<31} {1:<20} {2:<15} {3:<7} {4:<7} {5:<7} {6:<7} {7:<7} {8:<15} {9:<7} {10:<7} {11:<7} {12:<7} {13:<7} {14:<7} {15:<7}\n".format(*header_items))
 else:
     settings_file = open("settings.txt", "a+")
-setting_items = [run_name[:31], model["distribution_type"], model["rmin"], model["rmax"], model["rmean"], model["rstd"], model["mindist"], model["seed"],
+gmtime = time.gmtime()
+date_time = "{0}/{1}/{2} {3:02}:{4:02}:{5:02}".format(gmtime[0], gmtime[1], gmtime[2], gmtime[3], gmtime[4], gmtime[5])
+setting_items = [run_name[:31], date_time, model["distribution_type"], model["rmin"], model["rmax"], model["rmean"], model["rstd"], model["mindist"], model["seed"],
                  domain["xmin"], domain["xmax"], domain["ymin"], domain["ymax"], domain["por"], domain["por_tolerance"], domain["height"]]
-settings_file.write("{0:<31} {1:<15} {2:<7} {3:<7} {4:<7} {5:<7} {6:<7} {7:<15} {8:<7} {9:<7} {10:<7} {11:<7} {12:<7} {13:<7} {14:<7}\n".format(*setting_items))
+settings_file.write("{0:<31} {1:<20} {2:<15} {3:<7} {4:<7} {5:<7} {6:<7} {7:<7} {8:<15} {9:<7} {10:<7} {11:<7} {12:<7} {13:<7} {14:<7} {15:<7}\n".format(*setting_items))
 settings_file.close()
+
+# Initialize dictionary that will hold all failed cases, with as key the case name and as value the process at which the case failed.
+failed_cases = dict()
 
 ### DOMAIN GENERATION ###
 
@@ -215,6 +220,7 @@ if pre_process:
         case_stl_file = os.path.realpath("{0}{1}stl.stl".format(case_stl_dir, os.sep, i))
 
         # Create case from baseCase if it does not exist yet
+        # TODO: check if an existing case directory is an OpenFOAM case (i.e. check for '0', 'constant' and 'system' folder?
         if not os.path.isdir(case_dir):
             subprocess.call(["cp", "-rf", basecase_dir, case_dir])
 
@@ -225,6 +231,7 @@ if pre_process:
             os.mkdir("constant{0}triSurface".format(os.sep))
 
         # Copy .stl file to the triSurface folder of the case
+        # TODO: check if an stl file is already present?
         subprocess.call(["cp", case_stl_file, "{0}{1}constant{1}triSurface".format(case_dir, os.sep)])
 
         # Get location in mesh from stl directory
@@ -414,6 +421,8 @@ if simulations:
                     waiting_cases.append(case_dir)
             os.chdir(base_dir)
     print("All cases finished")
+
+### POST-PROCESSING ###
 
 os.chdir(base_dir)
 if post_process:

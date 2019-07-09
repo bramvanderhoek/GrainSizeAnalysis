@@ -212,6 +212,7 @@ porosity : float
             return
 
         # Shrink region extents if they reach beyond the domain
+        # TODO: use max & min functions
         if region:
             if region[0] < self.xmin:
                 region[0] = self.xmin

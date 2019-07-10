@@ -36,7 +36,7 @@ model = dict(distribution_type="truncLogNormal",
              rmean=0.35,
              rstd=0.25,
              mindist=0.025,
-             seed=646426512)
+             seed=True)
 
 # TODO: implement different ways of placing grains (random, regular, alternating)
 
@@ -54,18 +54,18 @@ model = dict(distribution_type="truncLogNormal",
 #   Minimum y-axis extent of the domain
 # ymax : int, float
 #   Maximum y-axis extent of the domain
-# por : float
-#   Porosity of the model
-# por_tolerance : float
-#   Fraction of por that the porosity is allowed to deviate
+# por_min : float
+#   Minimum porosity value of the model
+# por_max : float
+#   Maximum porosity value of the model
 # height : float, int
 #   Height of the model, i.e. it's thickness along the z-axis
 domain = dict(xmin=0,
-              xmax=4,
+              xmax=20,
               ymin=0,
-              ymax=4,
-              por=0.35,
-              por_tolerance=0.05,
+              ymax=10,
+              por_min=0.3,
+              por_max=0.4,
               height=model["mindist"]/np.sqrt(8))
 
 ####################################
@@ -91,19 +91,19 @@ snappy_refinement = False
 post_processing_margin = (domain["xmax"] - domain["xmin"]) * 0.1
 
 # Number of allowed failed cases before the program stops
-n_allowed_fails = 2
+n_allowed_fails = 10
 
 # Number of simulations to do during Monte Carlo
-n_simulations = 4
+n_simulations = 500
 # Number of cores to use for each simulation
 # NOTE: using multiple cores for a case with cyclic BC is error prone
 cores_per_sim = 1
 # Whether or not to run on cluster (non-cluster simulations not yet implemented)
-cluster = False
+cluster = True
 # Username of account of cluster from which this script is being run
 cluster_user = "3979202"
 # Number of simulations to run in parallel at one time (value higher than 1 only supported for cluster)
-n_parallel_sims = 10
+n_parallel_sims = 12
 # Amount tasks to be invoked per computing node
 tasks_per_node = 1
 # Restrict node selection to nodes with at least the specified number of threads per core.
@@ -120,9 +120,9 @@ modules = ["opt/all",
 scripts = ["/trinity/opt/apps/software/openFoam/version6/OpenFOAM-6/etc/bashrc"]
 
 # Name of the base directory to perform the simulations in
-base_dir = "../../Simulations"
+base_dir = "../../Ensemble_Test_2"
 # Name of this batch of simulations
-run_name = "Test_Fix"
+run_name = "coarse_sand_lognorm_old"
 # Directory to copy the base OpenFOAM case from
 basecase_dir = "../baseCase_cyclic"
 
@@ -147,14 +147,14 @@ if model["seed"] is not False:
 # Write settings to file
 if not os.path.isfile("settings.txt"):
     settings_file = open("settings.txt", "w")
-    header_items = ["run_name", "date/time", "dist_type", "rmin", "rmax", "rmean", "rstd", "mindist", "base_seed", "xmin", "xmax", "ymin", "ymax", "por", "por_tol", "height"]
+    header_items = ["run_name", "date/time", "dist_type", "rmin", "rmax", "rmean", "rstd", "mindist", "base_seed", "xmin", "xmax", "ymin", "ymax", "por_min", "por_max", "height"]
     settings_file.write("{0:<31} {1:<20} {2:<15} {3:<7} {4:<7} {5:<7} {6:<7} {7:<7} {8:<15} {9:<7} {10:<7} {11:<7} {12:<7} {13:<7} {14:<7} {15:<7}\n".format(*header_items))
 else:
     settings_file = open("settings.txt", "a+")
-gmtime = time.gmtime()
-date_time = "{0}/{1}/{2} {3:02}:{4:02}:{5:02}".format(gmtime[0], gmtime[1], gmtime[2], gmtime[3], gmtime[4], gmtime[5])
+localtime = time.localtime()
+date_time = "{0}/{1}/{2} {3:02}:{4:02}:{5:02}".format(localtime[2], localtime[1], localtime[0], localtime[3], localtime[4], localtime[5])
 setting_items = [run_name[:31], date_time, model["distribution_type"], model["rmin"], model["rmax"], model["rmean"], model["rstd"], model["mindist"], model["seed"],
-                 domain["xmin"], domain["xmax"], domain["ymin"], domain["ymax"], domain["por"], domain["por_tolerance"], domain["height"]]
+                 domain["xmin"], domain["xmax"], domain["ymin"], domain["ymax"], domain["por_min"], domain["por_max"], domain["height"]]
 settings_file.write("{0:<31} {1:<20} {2:<15} {3:<7} {4:<7} {5:<7} {6:<7} {7:<7} {8:<15} {9:<7} {10:<7} {11:<7} {12:<7} {13:<7} {14:<7} {15:<7}\n".format(*setting_items))
 settings_file.close()
 
@@ -175,15 +175,15 @@ if generate_domain:
         os.chdir("{0}_{1}".format(run_name, i))
 
         if not os.path.isfile("stl.stl") or stl_overwrite:
-            if stl_overwrite:
+            if stl_overwrite and os.path.isfile("stl.stl"):
                 print("Overwriting stl file 'stl{0}{1}_{2}{0}stl.stl'".format(os.sep, run_name, i))
             # Generate and save model as .stl file
             if model["seed"]:
                 # If seed is in use, update it for this specific simulation
                 model["seed"] = base_seed + i
             por = randomCircles.create_model(model, domain, stl_filename="stl")
-            while not domain["por"] - domain["por"] * domain["por_tolerance"] <= por <= domain["por"] + domain["por"] * domain["por_tolerance"]:
-                print("Porosity not within the required tolerance, recreating geometry")
+            while not domain["por_min"] <= por <= domain["por_max"]:
+                print("Porosity not within specified range, recreating geometry")
                 if model["seed"] is not False:
                     print("WARNING: provided seed was unable to generate correct geometry, random seed will be used for case {0}".format(i))
                     model["seed"] = np.random.randint(0, 10**9)

@@ -1,8 +1,20 @@
 """grainStats.py: utilities to generate grain size distributions."""
 
-from scipy.stats import truncnorm 
-from numpy import log, exp, sqrt
+from scipy.stats import truncnorm, rv_continuous
 import numpy as np
+
+
+class TruncLogNormal(rv_continuous):
+
+    def __init__(self, mean, std, a, b):
+        super(TruncLogNormal, self).__init__()
+        self._mean = mean
+        self._std = std
+        self._a = a
+        self._b = b
+
+    def _pdf(self, x):
+        return 1 / (x * self._std * np.sqrt(2 * np.pi)) * np.exp(-(np.log(x) - self._mean)**2 / (2 * self._std**2))
 
 
 def generate_trunc_log_normal(n, rmin, rmax, rmean, rstd, seed=False):
@@ -29,10 +41,10 @@ vals : array
     Array of values based on a truncated log normal distribution with the given input parameters."""
     
     # Calculate statistics of logarithm
-    log_rmin = log(rmin)
-    log_rmax = log(rmax)
-    log_rmean = log(rmean) - 0.5*log(1 + (rstd**2) / (rmean**2))
-    log_rstd = sqrt(log(1 + rstd**2 / rmean**2))
+    log_rmin = np.log(rmin)
+    log_rmax = np.log(rmax)
+    log_rmean = np.log(rmean) - 0.5*np.log(1 + (rstd**2) / (rmean**2))
+    log_rstd = np.sqrt(np.log(1 + rstd**2 / rmean**2))
 
     # Convert min and max for normal distribution to min and max for standard normal distribution
     a, b = (log_rmin - log_rmean) / log_rstd, (log_rmax - log_rmean) / log_rstd
@@ -44,7 +56,7 @@ vals : array
     vals = truncnorm.rvs(a, b, size=n)
 
     # Transform the values back to a log normal distribution
-    vals = exp(vals * log_rstd + log_rmean)
+    vals = np.exp(vals * log_rstd + log_rmean)
 
     return vals
 

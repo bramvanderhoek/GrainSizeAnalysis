@@ -191,7 +191,7 @@ double_r : array
     return keeper_x, keeper_y, keeper_r, double_x, double_y, double_r
 
 
-def create_model(distribution, domain, number_of_points=100000, stl_filename="output", path=".", points_per_circle=50, plotting=False):
+def create_model(distribution, domain, number_of_points=10000, stl_filename="output", path=".", points_per_circle=50, plotting=False, report=True):
     """Create a model with the input grain size distribution (log-normal), and a specified porosity, and write it to a Stereolithography file.
 
 PARAMETERS
@@ -229,10 +229,10 @@ domain : dict
             Lower value of the domain size along the y-axis (mm).
         ymax : int, float
             Upper value of the domain size along the y-axis (mm).
-        por : float
-            The porosity of the domain.
-        por_tolerance : float
-            Amount of deviation allowed in the porosity of the model (as decimal percentage of por).
+        por_min : float
+            Minimum porosity value of the model
+        por_max : float
+            Maximum porosity value of the model
         height : int, float
             Height of the domain (i.e. its thickness along the z-axis) (mm).
 
@@ -246,6 +246,8 @@ points_per_circle : int
     Number of points representing a single circle in the output .stl file (more points give a more accurate representation).
 plotting : bool
     Whether or not to plot output and intermediate steps.
+report : bool
+    Whether or not to print info to the screen.
 
 RETURNS
 -------
@@ -260,8 +262,8 @@ por_final : float
 
     stl_height = domain["height"]
 
-    por = domain["por"]
-    por_tolerance = domain["por_tolerance"]
+    por_min = domain["por_min"]
+    por_max = domain["por_max"]
 
     # Get distribution statistics from dictionary
     # NOTE: when different distributions are available, the parameters will be different and the entire dictionary should probably be passed to a function!
@@ -272,17 +274,19 @@ por_final : float
     mindist = distribution["mindist"]
     seed = distribution["seed"]
 
-    # Calculate mesh area
-    mesh_area = (xmax - xmin) * (ymax - ymin)
-    
-    # Initial estimate of number of spheres needed to reach specified porosity value
-    number_r = round(mesh_area*(1 - por)/(np.pi*rmean**2))
-
     # Generate random points
     if seed is not False:
         np.random.seed(seed)
+
+    por = np.random.rand() * (por_max - por_min) + por_min
     x = np.random.rand(number_of_points) * (xmax - xmin) + xmin
     y = np.random.rand(number_of_points) * (ymax - ymin) + ymin
+
+    # Calculate mesh area
+    mesh_area = (xmax - xmin) * (ymax - ymin)
+
+    # Initial estimate of number of spheres needed to reach specified porosity value
+    number_r = round(mesh_area * (1 - por) / (np.pi * rmean ** 2))
 
     # Check which type of distribution to use (only one at the moment).
     if distribution["distribution_type"] == "truncLogNormal":
@@ -293,14 +297,13 @@ por_final : float
     por_new = calc_porosity(r, mesh_area)
 
     # Add or subtract grains until porosity is within acceptable range of wanted porosity
-    while not por + (por * por_tolerance) > por_new > por - (por * por_tolerance):
+    while not por_max > por_new > por_min:
         if por_new > por:
             number_r += 1
         elif por_new < por:
             number_r -= 1
         r = generate_trunc_log_normal(number_r, rmin, rmax, rmean, rstd)
         por_new = calc_porosity(r, mesh_area)
-        print(por_new)
     
     if plotting:
         try:
@@ -317,7 +320,7 @@ por_final : float
     r = r[::-1]
 
     # Place grains into the model domain
-    keeper_x, keeper_y, keeper_r, double_x, double_y, double_r = place_grains(r, x, y, xmin, xmax, ymin, ymax, mindist)
+    keeper_x, keeper_y, keeper_r, double_x, double_y, double_r = place_grains(r, x, y, xmin, xmax, ymin, ymax, mindist, report=False)
 
     # Report if not all grains were placed, and show new distribution of grains sizes
     if len(keeper_r) < number_r:
@@ -337,14 +340,14 @@ por_final : float
     rmean_final = np.mean(keeper_r)
     por_final = calc_porosity(keeper_r, mesh_area)
 
+    if report:
+        print("Starting porosity: {0}\nPorosity before placing grains: {1}\nFinal porosity: {2}\nFinal mean: {3}".format(por, por_new, por_final, rmean_final))
+
     # TODO: throw warning if final porosity not in specified porosity tolerance, main script can then decide whether or not to start over.
 
     por_file = open("{0}{1}porosity.dat".format(path, os.sep), "w")
     por_file.write(str(por_final) + "\n")
     por_file.close()
-
-    print("Final mean: {0}".format(rmean_final))
-    print("Final porosity: {0}".format(por_final))
 
     if plotting:
         try:
@@ -396,18 +399,20 @@ por_final : float
 
 if __name__ == "__main__":
     # Grain size statistics
-    model = dict(distributionType="truncLogNormal",
+    model = dict(distribution_type="truncLogNormal",
                  rmin=0.05,
                  rmax=0.8,
                  rmean=0.35,
                  rstd=0.25,
-                 mindist=0.025)
+                 mindist=0.025,
+                 seed=False)
 
     domain = dict(xmin=0,
-                  xmax=12,
+                  xmax=10,
                   ymin=0,
-                  ymax=12,
-                  por=0.35,
+                  ymax=10,
+                  por_min=0.3,
+                  por_max=0.4,
                   height=1)
 
     create_model(model, domain, plotting=True)

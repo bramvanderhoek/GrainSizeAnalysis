@@ -33,8 +33,8 @@ import preProcessing as preP
 model = dict(distribution_type="truncLogNormal",
              rmin=0.05,
              rmax=0.8,
-             rmean=0.35,
-             rstd=0.25,
+             rmean=0.25,
+             rstd=0.64,
              mindist=0.025,
              seed=True)
 
@@ -120,9 +120,9 @@ modules = ["opt/all",
 scripts = ["/trinity/opt/apps/software/openFoam/version6/OpenFOAM-6/etc/bashrc"]
 
 # Name of the base directory to perform the simulations in
-base_dir = "../../Ensemble_Test_2"
+base_dir = "../coarse_sand_narrow"
 # Name of this batch of simulations
-run_name = "coarse_sand_lognorm_old"
+run_name = "coarse_sand_narrow"
 # Directory to copy the base OpenFOAM case from
 basecase_dir = "../baseCase_cyclic"
 

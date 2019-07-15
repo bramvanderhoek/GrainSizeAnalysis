@@ -3,11 +3,11 @@ import os
 try:
     import matplotlib.pyplot as plt
     from matplotlib.patches import Circle
-except:
+except ModuleNotFoundError:
     pass
 import stlTools
 
-from grainStats import generate_trunc_log_normal
+from grainStats import TruncLogNorm
 
 
 def calc_porosity(grains, area):
@@ -278,6 +278,7 @@ por_final : float
     if seed is not False:
         np.random.seed(seed)
 
+    # Generate random porosity within the specified range, and initialize random points to place the grains at
     por = np.random.rand() * (por_max - por_min) + por_min
     x = np.random.rand(number_of_points) * (xmax - xmin) + xmin
     y = np.random.rand(number_of_points) * (ymax - ymin) + ymin
@@ -285,35 +286,36 @@ por_final : float
     # Calculate mesh area
     mesh_area = (xmax - xmin) * (ymax - ymin)
 
-    # Initial estimate of number of spheres needed to reach specified porosity value
-    number_r = round(mesh_area * (1 - por) / (np.pi * rmean ** 2))
-
     # Check which type of distribution to use (only one at the moment).
     if distribution["distribution_type"] == "truncLogNormal":
         # Generate grains based on truncated log normal distribution
-        r = generate_trunc_log_normal(number_r, rmin, rmax, rmean, rstd, seed)
+        pdf_gen = TruncLogNorm(rmin, rmax, loc=rmean, scale=rstd)
 
-    # Calculate theoretical porosity based on generated realization of grain size distribution
-    por_new = calc_porosity(r, mesh_area)
-
-    # Add or subtract grains until porosity is within acceptable range of wanted porosity
-    while not por_max > por_new > por_min:
-        if por_new > por:
-            number_r += 1
-        elif por_new < por:
-            number_r -= 1
-        r = generate_trunc_log_normal(number_r, rmin, rmax, rmean, rstd)
+    r = np.array([])
+    por_new = 1
+    # Add new grains, pulled from the specified distribution, until the right porosity is (approximately) reached.
+    # Note: actual porosity will always be slightly lower than the randomly generated one
+    while por_new > por:
+        r = np.append(r, pdf_gen.rvs(1))
         por_new = calc_porosity(r, mesh_area)
+    # Remove grains if porosity has gotten below the minimum specified porosity.
+    while por_new < por_min:
+        r = r[:-1]
+        por_new = calc_porosity(r, mesh_area)
+
+    # Get total number of grains
+    number_r = len(r)
     
     if plotting:
-        try:
-            fig, ax = plt.subplots()
-            ax.hist(r, bins=number_r//5)
-            plt.xlabel("r [mm]")
-            plt.ylabel("n")
-            plt.show()
-        except:
-            pass
+        fig, ax = plt.subplots()
+        ax.hist(r, bins=number_r//5, density=True)
+        pdf_x = np.arange(rmin, rmax, 0.01)
+        pdf_y = pdf_gen.pdf(pdf_x)
+        ax.plot(pdf_x, pdf_y, label="pdf")
+        plt.xlabel("r [mm]")
+        plt.ylabel("density")
+        plt.legend()
+        plt.show()
 
     # Sort grains from large to small
     r.sort()
@@ -326,12 +328,13 @@ por_final : float
     if len(keeper_r) < number_r:
         print("WARNING: Not all grains were placed into the domain; specified number: {0}, new number: {1}".format(number_r, len(keeper_r)))
         if plotting:
-            try:
-                fig, ax = plt.subplots()
-                ax.hist(keeper_r, bins=len(r)//5)
-                plt.show()
-            except:
-                pass
+            pdf_x = np.arange(rmin, rmax, 0.01)
+            pdf_y = pdf_gen.pdf(pdf_x)
+            fig, ax = plt.subplots()
+            ax.hist(keeper_r, bins=len(r)//5, density=True)
+            ax.plot(pdf_x, pdf_y, label="pdf")
+            plt.legend()
+            plt.show()
 
     # Calculate final mean grain size and porosity
     # Even though some of the 'keeper' grains are partly outside of the domain,
@@ -402,8 +405,8 @@ if __name__ == "__main__":
     model = dict(distribution_type="truncLogNormal",
                  rmin=0.05,
                  rmax=0.8,
-                 rmean=0.35,
-                 rstd=0.25,
+                 rmean=0.25,
+                 rstd=0.64,
                  mindist=0.025,
                  seed=False)
 
@@ -415,4 +418,9 @@ if __name__ == "__main__":
                   por_max=0.4,
                   height=1)
 
-    create_model(model, domain, plotting=True)
+    n = 10
+    por = []
+    for i in range(n):
+        por.append(create_model(model, domain, plotting=False))
+    print(por)
+    print(np.mean(por))

@@ -1,20 +1,38 @@
 """grainStats.py: utilities to generate grain size distributions."""
 
-from scipy.stats import truncnorm, rv_continuous
+from scipy.stats import truncnorm
 import numpy as np
 
 
-class TruncLogNormal(rv_continuous):
+class TruncLogNorm:
+    """Class representing a truncated log normal distribution."""
 
-    def __init__(self, mean, std, a, b):
-        super(TruncLogNormal, self).__init__()
-        self._mean = mean
-        self._std = std
-        self._a = a
-        self._b = b
+    def __init__(self, a, b, loc=0, scale=1):
+        self._scale = scale
+        self._loc = np.log(loc)
+        self._a = (np.log(a) - self._loc) / scale
+        self._b = (np.log(b) - self._loc) / scale
 
-    def _pdf(self, x):
-        return 1 / (x * self._std * np.sqrt(2 * np.pi)) * np.exp(-(np.log(x) - self._mean)**2 / (2 * self._std**2))
+    def pdf(self, x):
+        """Get the value of the distribution's probability density function at location x."""
+        pdf = truncnorm.pdf((np.log(x) - self._loc) / self._scale, self._a, self._b) / self._scale / x
+        return pdf
+
+    def rvs(self, size):
+        """Pull a number of random variables from the distribution."""
+        n_vals = truncnorm.rvs(self._a, self._b, size=size)
+        ln_vals = np.exp(n_vals * self._scale + self._loc)
+        return ln_vals
+
+    def transform_moment(self, mu, std, lognorm_to_norm=True):
+        """Transform first two moments of log normal distribution to the moments of normal distribution or vice versa."""
+        if lognorm_to_norm:
+            m1 = np.exp(np.log(mu) - 0.5 * np.log(1 + std**2 / mu**2))
+            m2 = np.sqrt(np.log(1 + std**2 / mu**2))
+        else:
+            m1 = np.exp(mu + 0.5*std)
+            m2 = m1**2 * (np.exp(std**2) - 1)
+        return m1, m2
 
 
 def generate_trunc_log_normal(n, rmin, rmax, rmean, rstd, seed=False):

@@ -212,20 +212,13 @@ porosity : float
             return
 
         # Shrink region extents if they reach beyond the domain
-        # TODO: use max & min functions
         if region:
-            if region[0] < self.xmin:
-                region[0] = self.xmin
-            if region[1] > self.xmax:
-                region[1] = self.xmax
-            if region[2] < self.ymin:
-                region[2] = self.ymin
-            if region[3] > self.ymax:
-                region[3] = self.ymax
-            if region[4] < self.zmin:
-                region[4] = self.zmin
-            if region[5] > self.zmax:
-                region[5] = self.zmax
+            region[0] = np.max([region[0], self.xmin])
+            region[1] = np.min([region[1], self.xmax])
+            region[2] = np.max([region[2], self.ymin])
+            region[3] = np.min([region[3], self.ymax])
+            region[4] = np.max([region[4], self.zmin])
+            region[5] = np.min([region[5], self.zmax])
 
         if not region:
             total_volume = (self.xmax - self.xmin) * (self.ymax - self.ymin) * (self.zmax - self.zmin)
@@ -617,18 +610,48 @@ vtk_obj : VTKObject
     return vtk_obj
 
 
+def ensemble_statistics(data, bins, file=None):
+    """Get statistics from ensemble results sorted into porosity ranges.
+
+PARAMETERS
+----------
+data : array_like
+    Array of ensemble data organized as couples of porosities with corresponding permeability,
+    i.e.: [[porosity_0, permeability_0], [porosity_1, permeability_1], ..., [porosity_last, permeability_last]].
+bins : array_like
+    Array defining the porosity ranges to calculate statistics for. For example,
+    [0.3, 0.35, 0.4] will calculate statistics for porosity ranges (0.3, 0.35) and (0.35, 0.4).
+file : str
+    If an output file is desired, this should be the file's path.
+
+RETURNS
+-------
+mean : list
+    List of mean permeabilities per porosity range.
+std : list
+    List of standard deviations of permeability per porosity range."""
+
+    data = np.array(data)
+    mean = []
+    std = []
+
+    for i in range(len(bins) - 1):
+        data_filtered = np.compress((bins[i] < data[:, 0]) * (bins[i+1] > data[:, 0]), data[:, 1])
+        mean.append(np.mean(data_filtered))
+        std.append(np.std(data_filtered))
+
+    if file:
+        out_file = open(file, "w")
+        out_file.write("por_bin\tk_mean\tk_std\n")
+        for i in range(len(mean)):
+            out_file.write("{0}-{1}\t{2}\t{3}\n".format(bins[i], bins[i+1], mean[i], std[i]))
+        out_file.close()
+
+    return mean, std
+
+
 if __name__ == "__main__":
-    caseDir = sys.argv[1]
-    filename = sys.argv[2]
-    kin_visc, density = sys.argv[3], sys.argv[4]
-    if len(sys.argv) > 5:
-        margin = sys.argv[5]
-    else:
-        margin = 0 
-    os.chdir(caseDir)
-    vtk = VTKObject(filename, calc_volumes=True)
-    por, k = post_process(vtk, kin_visc, density, margin=margin)
-    print("Writing output file in {0}".format(os.getcwd()))
-    outfile = open("{0}{1}out.dat".format(caseDir, os.sep), "w")
-    outfile.write("{0},{1}".format(por, k))
-    outfile.close()
+    os.chdir("C:\\Users\\Bram\\Dropbox\\Guided_Research\\Results")
+    data = np.loadtxt("coarse_sand_wide\\results_comma_separated.dat", delimiter=',', skiprows=0)
+    bins = [0.3, 0.31, 0.32, 0.33, 0.34, 0.35, 0.36, 0.37, 0.38, 0.39, 0.4]
+    mean, std = ensemble_statistics(data, bins, file="coarse_sand_wide_bin_stats.dat")

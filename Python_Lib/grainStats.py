@@ -1,6 +1,6 @@
 """grainStats.py: utilities to generate grain size distributions."""
 
-from scipy.stats import truncnorm
+from scipy.stats import truncnorm, rv_histogram
 import numpy as np
 
 
@@ -8,8 +8,10 @@ class TruncLogNorm:
     """Class representing a truncated log normal distribution."""
 
     def __init__(self, a, b, loc=0, scale=1):
+
         self._scale = scale
         self._loc = np.log(loc)
+        # TODO: transform mu and sigma
         self._a = (np.log(a) - self._loc) / scale
         self._b = (np.log(b) - self._loc) / scale
 
@@ -33,6 +35,25 @@ class TruncLogNorm:
             m1 = np.exp(mu + 0.5*std)
             m2 = m1**2 * (np.exp(std**2) - 1)
         return m1, m2
+
+
+class DataDistribution:
+    """Class representing a distribution from input data."""
+
+    def __init__(self, data_points, c_freq):
+        self.data_points = np.array(data_points)
+        self.c_freq = np.array(c_freq)
+        self.freq = np.diff(self.c_freq)
+        arg = np.log(self.data_points)
+        self.hist = rv_histogram((100*self.freq, arg))
+
+    def pdf(self, x):
+        pdf = self.hist.pdf(x)
+        return pdf
+
+    def rvs(self, size):
+        values = np.exp(self.hist.rvs(size=size))
+        return values
 
 
 def generate_trunc_log_normal(n, rmin, rmax, rmean, rstd, seed=False):
@@ -82,15 +103,13 @@ vals : array
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
-    n = 1000000
-    rmin = 0.01
-    rmax = 100
-    rmean = 0.4
-    rstd = 0.25
+    data = [0.00063,0.002,0.016,0.032,0.05,0.063,0.125,0.25,0.5,1,2,6.3]
+    c_freq = [0,9.7,19,26,30,33,36,56,83,94,98,100]
 
-    dist = generate_trunc_log_normal(n, rmin, rmax, rmean, rstd)
-    print(np.mean(dist))
+    dist = DataDistribution(data, c_freq)
+    vals = dist.rvs(1000)
+    print(np.mean(vals))
 
-    fig, ax = plt.subplots()
-    ax.hist(dist, bins=100)
-    plt.show()
+    # x = np.arange(-5, 5, 0.01)
+    # plt.plot(x, dist.pdf(x))
+    # plt.show()

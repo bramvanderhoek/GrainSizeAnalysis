@@ -30,11 +30,19 @@ import preProcessing as preP
 #       For each simulation the seed will be incremented by 1 to generate a different domain.
 #       Set to True to generate a random, but known, seed,
 #       set to False to use numpy's internal seed (you won't be able to reproduce your results with this)
-model = dict(distribution_type="truncLogNormal",
-             rmin=0.05,
-             rmax=0.8,
-             rmean=0.25,
-             rstd=0.64,
+
+distribution = dict(
+    # type="truncLogNormal",
+    # rmin=0.00063,
+    # rmax=1.0,
+    # rmean=0.236,
+    # rstd=0.26,
+    type="data",
+    data_points=[0.016, 0.032, 0.05, 0.063, 0.125, 0.25, 0.5, 1.0, 2.0],
+    c_freq=[0, 1, 3.5, 3.7, 5.0, 14, 68, 94, 100]
+)
+
+model = dict(distribution=distribution,
              mindist=0.025,
              seed=True)
 
@@ -94,7 +102,7 @@ post_processing_margin = (domain["xmax"] - domain["xmin"]) * 0.1
 n_allowed_fails = 10
 
 # Number of simulations to do during Monte Carlo
-n_simulations = 500
+n_simulations = 1000
 # Number of cores to use for each simulation
 # NOTE: using multiple cores for a case with cyclic BC is error prone
 cores_per_sim = 1
@@ -120,9 +128,9 @@ modules = ["opt/all",
 scripts = ["/trinity/opt/apps/software/openFoam/version6/OpenFOAM-6/etc/bashrc"]
 
 # Name of the base directory to perform the simulations in
-base_dir = "../coarse_sand_narrow"
+base_dir = "../field_data_ensemble"
 # Name of this batch of simulations
-run_name = "coarse_sand_narrow"
+run_name = "field_data"
 # Directory to copy the base OpenFOAM case from
 basecase_dir = "../baseCase_cyclic"
 
@@ -147,15 +155,21 @@ if model["seed"] is not False:
 # Write settings to file
 if not os.path.isfile("settings.txt"):
     settings_file = open("settings.txt", "w")
-    header_items = ["run_name", "date/time", "dist_type", "rmin", "rmax", "rmean", "rstd", "mindist", "base_seed", "xmin", "xmax", "ymin", "ymax", "por_min", "por_max", "height"]
-    settings_file.write("{0:<31} {1:<20} {2:<15} {3:<7} {4:<7} {5:<7} {6:<7} {7:<7} {8:<15} {9:<7} {10:<7} {11:<7} {12:<7} {13:<7} {14:<7} {15:<7}\n".format(*header_items))
+    header_items = ["run_name", "date/time", "distribution", "mindist", "base_seed", "xmin", "xmax", "ymin", "ymax", "por_min", "por_max", "height"]
+    settings_file.write("{0:<31} {1:<20} {2:<160} {3:<7} {4:<15} {5:<7} {6:<7} {7:<7} {8:<7} {9:<7} {10:<7} {11:<7}\n".format(*header_items))
 else:
     settings_file = open("settings.txt", "a+")
 localtime = time.localtime()
 date_time = "{0}/{1}/{2} {3:02}:{4:02}:{5:02}".format(localtime[2], localtime[1], localtime[0], localtime[3], localtime[4], localtime[5])
-setting_items = [run_name[:31], date_time, model["distribution_type"], model["rmin"], model["rmax"], model["rmean"], model["rstd"], model["mindist"], model["seed"],
+
+dist = model["distribution"]
+if dist["type"] == "truncLogNormal":
+    dist_string = "(truncLogNormal: rmin={0}, rmax={1}, rmean={2}, rstd={3})".format(dist["rmin"], dist["rmax"], dist["rmean"], dist["rstd"])
+elif dist["type"] == "data":
+    dist_string = "(data: data_points={0}, c_freq={1})".format(dist["data_points"], dist["c_freq"])
+setting_items = [run_name[:31], date_time, dist_string, model["mindist"], model["seed"],
                  domain["xmin"], domain["xmax"], domain["ymin"], domain["ymax"], domain["por_min"], domain["por_max"], domain["height"]]
-settings_file.write("{0:<31} {1:<20} {2:<15} {3:<7} {4:<7} {5:<7} {6:<7} {7:<7} {8:<15} {9:<7} {10:<7} {11:<7} {12:<7} {13:<7} {14:<7} {15:<7}\n".format(*setting_items))
+settings_file.write("{0:<31} {1:<20} {2:<160} {3:<7} {4:<15} {5:<7} {6:<7} {7:<7} {8:<7} {9:<7} {10:<7} {11:<7}\n".format(*setting_items))
 settings_file.close()
 
 # Initialize dictionary that will hold all failed cases, with as key the case name and as value the process at which the case failed.
@@ -219,9 +233,10 @@ if pre_process:
         case_stl_dir = os.path.realpath("{0}{1}{2}_{3}".format(stl_dir, os.sep, run_name, i))
         case_stl_file = os.path.realpath("{0}{1}stl.stl".format(case_stl_dir, os.sep, i))
 
-        # Create case from baseCase if it does not exist yet
-        # TODO: check if an existing case directory is an OpenFOAM case (i.e. check for '0', 'constant' and 'system' folder?
-        if not os.path.isdir(case_dir):
+        # Create case from baseCase if it does not exist yet, or if existing directory is not a valid OpenFOAM directory
+        openfoam_dirs = ["{0}{1}{2}".format(case_dir, os.sep, folder) for folder in ["0", "constant", "system"]]
+        openfoam_case = np.array([os.path.isdir(folder) for folder in openfoam_dirs]).all()
+        if not os.path.isdir(case_dir) or not openfoam_case:
             subprocess.call(["cp", "-rf", basecase_dir, case_dir])
 
         # Go into case directory

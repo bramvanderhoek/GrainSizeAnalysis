@@ -7,7 +7,7 @@ except ModuleNotFoundError:
     pass
 import stlTools
 
-from grainStats import TruncLogNorm
+from grainStats import TruncLogNorm, DataDistribution
 
 
 def calc_porosity(grains, area):
@@ -139,7 +139,7 @@ double_r : array
             this_r = radii[i]
 
             # Make sure grain does not overlap with inlet or outlet
-            if this_x - this_r - mindist < xmin or this_x + this_r  + mindist > xmax:
+            if this_x - this_r - mindist < xmin or this_x + this_r + mindist > xmax:
                 continue
 
             # Check if grain is at the edge (top or bottom) of the domain
@@ -191,27 +191,18 @@ double_r : array
     return keeper_x, keeper_y, keeper_r, double_x, double_y, double_r
 
 
-def create_model(distribution, domain, number_of_points=10000, stl_filename="output", path=".", points_per_circle=50, plotting=False, report=True):
+def create_model(model, domain, number_of_points=500000, stl_filename="output", path=".", points_per_circle=50, plotting=False, report=True):
     """Create a model with the input grain size distribution (log-normal), and a specified porosity, and write it to a Stereolithography file.
 
 PARAMETERS
 ----------
-distribution : dict
+model : dict
     Dictionary containing parameters of the grain size distribution.
 
     Mandatory keywords:
-        distributionType : str
-            String containing the type of distribution to be used.
-            Valid values:
-                - "truncLogNormal"
-        rmin : int, float
-            Minimum grain radius (mm).
-        rmax : int, float
-            Maximum grain radius (mm).
-        rmean : int, float
-            Mean grain radius (mm).
-        rstd : int, float
-            Standard deviation of grain radius (mm).
+        distribution : dict
+            Dictionary representing a distribution, either directly as a distribution,
+            or defined by field data. Mandatory keywords depend on distribution type.
         mindist : int, float
             Minimum distance between grains (mm).
         seed : bool, int
@@ -267,12 +258,9 @@ por_final : float
 
     # Get distribution statistics from dictionary
     # NOTE: when different distributions are available, the parameters will be different and the entire dictionary should probably be passed to a function!
-    rmin = distribution["rmin"]
-    rmax = distribution["rmax"]
-    rmean = distribution["rmean"]
-    rstd = distribution["rstd"]
-    mindist = distribution["mindist"]
-    seed = distribution["seed"]
+    dist = model["distribution"]
+    mindist = model["mindist"]
+    seed = model["seed"]
 
     # Generate random points
     if seed is not False:
@@ -287,9 +275,17 @@ por_final : float
     mesh_area = (xmax - xmin) * (ymax - ymin)
 
     # Check which type of distribution to use (only one at the moment).
-    if distribution["distribution_type"] == "truncLogNormal":
+    if dist["type"] == "truncLogNormal":
+        rmin = dist["rmin"]
+        rmax = dist["rmax"]
+        rmean = dist["rmean"]
+        rstd = dist["rstd"]
         # Generate grains based on truncated log normal distribution
         pdf_gen = TruncLogNorm(rmin, rmax, loc=rmean, scale=rstd)
+    elif dist["type"] == "data":
+        data_points = dist["data_points"]
+        c_freq = dist["c_freq"]
+        pdf_gen = DataDistribution(data_points, c_freq)
 
     r = np.array([])
     por_new = 1
@@ -322,7 +318,7 @@ por_final : float
     r = r[::-1]
 
     # Place grains into the model domain
-    keeper_x, keeper_y, keeper_r, double_x, double_y, double_r = place_grains(r, x, y, xmin, xmax, ymin, ymax, mindist, report=False)
+    keeper_x, keeper_y, keeper_r, double_x, double_y, double_r = place_grains(r, x, y, xmin, xmax, ymin, ymax, mindist, report=report)
 
     # Report if not all grains were placed, and show new distribution of grains sizes
     if len(keeper_r) < number_r:
@@ -345,8 +341,6 @@ por_final : float
 
     if report:
         print("Starting porosity: {0}\nPorosity before placing grains: {1}\nFinal porosity: {2}\nFinal mean: {3}".format(por, por_new, por_final, rmean_final))
-
-    # TODO: throw warning if final porosity not in specified porosity tolerance, main script can then decide whether or not to start over.
 
     por_file = open("{0}{1}porosity.dat".format(path, os.sep), "w")
     por_file.write(str(por_final) + "\n")
@@ -383,6 +377,15 @@ por_final : float
     location_file = open("locationInMesh.dat", "w")
     location_file.write("{0} {1} {2}".format(point_x, point_y, stl_height / 2))
     location_file.close()
+
+    # Write raw x, y and radius data to file
+    raw_data_file = open("raw_data.dat", "w")
+    raw_data_file.write("x,y,r\n")
+    for i in range(len(keeper_r)):
+        raw_data_file.write("{0},{1},{2}\n".format(keeper_x[i], keeper_y[i], keeper_r[i]))
+    for i in range(len(double_r)):
+        raw_data_file.write("{0},{1},{2}\n".format(double_x[i], double_y[i], double_r[i]))
+    raw_data_file.close()
 
     # Given a number of vertices (pointsPerCirle) and a height (stl_height), create an .stl file containing triangulated pseudo-cylinders
     # from the circles in the model.

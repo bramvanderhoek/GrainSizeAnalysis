@@ -651,7 +651,17 @@ std : list
 
 
 if __name__ == "__main__":
-    os.chdir("C:\\Users\\Bram\\Dropbox\\Guided_Research\\Results")
-    data = np.loadtxt("coarse_sand_wide\\results_comma_separated.dat", delimiter=',', skiprows=0)
-    bins = [0.3, 0.31, 0.32, 0.33, 0.34, 0.35, 0.36, 0.37, 0.38, 0.39, 0.4]
-    mean, std = ensemble_statistics(data, bins, file="coarse_sand_wide_bin_stats.dat")
+    caseDir = sys.argv[1]
+    filename = sys.argv[2]
+    kin_visc, density = sys.argv[3], sys.argv[4]
+    if len(sys.argv) > 5:
+        margin = sys.argv[5]
+    else:
+        margin = 0
+    os.chdir(caseDir)
+    vtk = VTKObject(filename, calc_volumes=True)
+    por, k = post_process(vtk, kin_visc, density, margin=margin)
+    print("Writing output file in {0}".format(os.getcwd()))
+    outfile = open("{0}{1}out.dat".format(caseDir, os.sep), "w")
+    outfile.write("{0},{1}".format(por, k))
+    outfile.close()

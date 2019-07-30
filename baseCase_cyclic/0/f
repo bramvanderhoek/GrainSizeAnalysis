@@ -31,11 +31,11 @@ boundaryField
     }
     top
     {
-        type            symmetryPlane;
+        type            cyclic;
     }
     bottom
     {
-        type            symmetryPlane;
+        type            cyclic;
     }
     grains
     {

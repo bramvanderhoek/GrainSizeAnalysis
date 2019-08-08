@@ -20,14 +20,16 @@ def calc_permeability(por, u_mean, dp, dx, kin_visc=1e-6, density=1000):
             Porosity value to be used in calculation.
         u_mean : float, int
             Mean velocity along the direction for which the permeability is being calculated.
-        kin_visc : float, int
-            Kinematic viscosity of fluid.
-        density : float, int
-            Density of fluid.
         dp : float, int
             Pressure gradient over the length over which permeability is being calculated.
         dx : float, int
             Length over which permeability is being calculated.
+        kin_visc : float, int
+            Kinematic viscosity of fluid. 
+            default: 1e-6, value of water
+        density : float, int
+            Density of fluid.
+            default: 1000, value of water
         
         RETURNS
         -------
@@ -38,7 +40,7 @@ def calc_permeability(por, u_mean, dp, dx, kin_visc=1e-6, density=1000):
 
     return k
 
-def calc_values(vtk,  margin=0, epsilon=0.00001,**kwargs):
+def calc_values(vtk,  margin=0, epsilon=False,volume_weighted=True,**kwargs):
     """Do post-processing on VTKObject, calculating the porosity and permeability of the domain
         given a certain margin which is excluded from the calculation.
         
@@ -46,10 +48,6 @@ def calc_values(vtk,  margin=0, epsilon=0.00001,**kwargs):
         ----------
         vtk : VTKObject
             VTKObject to do calculations on.
-        kin_visc : float, int
-            Kinematic viscosity of fluid.
-        density : float, int
-            Density of fluid.
         margin : float, int
             Margin to be excluded from calculations at the inlet and outlet of the domain.
         epsilon : float
@@ -63,24 +61,27 @@ def calc_values(vtk,  margin=0, epsilon=0.00001,**kwargs):
         k : float
             Permeability calculated for the VTKObject with given margin.
     """
+    if not epsilon:
+        epsilon=0.01*(vtk.xmax-vtk.xmin)
 
     if "U_x" not in vtk.cell_data:
         # Write vector components of velocity
         vtk.write_vector_components("U")
 
+    #print(margin)
     # Define box for which permeability will be determined
     box = [vtk.xmin + margin, vtk.xmax - margin, vtk.ymin, vtk.ymax, vtk.zmin, vtk.zmax]
     # Calculate mean pressures at both ends of the region
     p1 = vtk.calc_mean( "p",
         region=[box[0] - epsilon, box[0] + epsilon, box[2], box[3], box[4], box[5]],
-        volume_weighted=True)
+        volume_weighted=volume_weighted)
     p2 = vtk.calc_mean( "p",
         region=[box[1] - epsilon, box[1] + epsilon, box[2], box[3], box[4], box[5]],
-        volume_weighted=True)
+        volume_weighted=volume_weighted)
     # Calculate permeability of the region
     por = vtk.calc_porosity(region=box)
     # Calculate mean velocity in x-direction in the region
-    Ux_mean = vtk.calc_mean("U_x", region=box, volume_weighted=True)
+    Ux_mean = vtk.calc_mean("U_x", region=box, volume_weighted=volume_weighted)
     # Calculate permeability from porosity, weighted velocity, kinematic viscosity, density, pressure gradient and
     # region length
     k = calc_permeability(por, Ux_mean, p2 - p1, box[1] - box[0], **kwargs)
@@ -380,6 +381,29 @@ def ensemble_statistics(data, bins, file=None):
 
 #def post_process(case_dir,file_vtk,**kwargs):
 def post_process(file_vtk,file_output,**kwargs):
+
+    """
+    **kwargs:
+        epsilon             : float
+            Range around the minimum and maximum x values of the domain 
+            (excluding the margins) around which cells will be used to 
+            calculate the pressure gradient, 
+            e.g. for epsilon = 0.0001, the pressure on the left side of 
+            the domain will be calculated as the mean of the cells between 
+            x = (xmin + margin) - 0.0001, and x = (xmin + margin) + 0.0001
+        epsilon             : float  
+                                default: 0.00001
+        volumen_weighted    : boolean
+                                default: True
+                                kin_visc=1e-6, density=1000
+        kin_visc            : float, int
+                                Kinematic viscosity of fluid. 
+                                default: 1e-6, value of water
+        density             : float, int
+                                Density of fluid.
+                                default: 1000, value of water
+    """
+    
     
     vtk = VTKObject(file_vtk, calc_volumes=True)
     por, k = calc_values(vtk,**kwargs)

@@ -112,6 +112,7 @@ def update_snappyHexMeshDict(
     refinement=False,
     snap=True,
     castellated_mesh=True,
+    unit_factor=0.001,
 ):
 
     """Update snappyHexMeshDict with new .stl filename and point in mesh.
@@ -174,7 +175,7 @@ def update_snappyHexMeshDict(
         ):
             # Set minimum volume to a fraction of expected cell volume
 #            line = "\tminVol\t{0};\n".format(cell_size ** 2 * height * 0.0001)
-            line = "\tminVol\t{0};\n".format( (cell_size  * 0.001)**3 * 0.0001)
+            line = "\tminVol\t{0};\n".format( (cell_size  * unit_factor)**3 * 0.0001)
         shmd_new.write(line)
 
     shmd_old.close()
@@ -249,30 +250,3 @@ def update_extrudeMeshDict(path, height):
     )
 
 
-def check_log(log_file):
-    """Checks OpenFOAM log file to see if an OpenFOAM process ended properly or aborted due to an error.
-    Returns True if log ended properly, else returns False.
-    
-    PARAMETERS
-    ----------
-    log_file : str
-        Path to the log file to be checked.
-    
-    RETURNS
-    -------
-    status : bool
-    True or False value depending on whether or not the OpenFOAM process ended properly, respectively."""
-
-    # Get the last word from the log file using the 'tail' command
-    if not os.path.isfile("tail {}".format(log_file)):
-        status = False
-    else:
-
-        last_word = os.popen("tail {}".format(log_file)).read().split()[-1]   
-        # If log file ends with the word 'End', we know that the process ended properly, otherwise something went wrong
-        if last_word == "End" or last_word == "run":
-            status = True
-        else:
-            status = False
-
-    return status

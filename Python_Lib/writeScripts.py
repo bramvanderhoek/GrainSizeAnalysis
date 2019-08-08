@@ -5,6 +5,7 @@ Created on Wed Aug  7 16:25:50 2019
 
 @author: zech0001
 """
+import os
 
 def create_script_header(
     name,
@@ -150,13 +151,13 @@ def create_pre_processing_script(
         else:
             commands += "snappyHexMesh -overwrite -parallel | tee snappyHexMesh_1.log\n"
 
-    script = open("{}/preprocessing{0}.sh".format(path ,"_1" if refinement else ""), "w")
+    script = open("{}preprocessing{}.sh".format(path ,"_1" if refinement else ""), "w")
     script.write(header)
     script.write(module_string)
     script.write(commands)
     script.close()
 
-    print("Preprocessing script successfully created: \n {}".format("{}/preprocessing{0}.sh".format(path ,"_1" if refinement else "")))
+    print("Preprocessing script successfully created: \n {}".format("{}preprocessing{}.sh".format(path ,"_1" if refinement else "")))
 
 
 def create_simulation_script(
@@ -204,13 +205,13 @@ def create_simulation_script(
 
     commands += "foamToVTK -latestTime -ascii\n"
 
-    script = open("{}/runSimulations.sh".format(path), "w")
+    script = open("{}runSimulations.sh".format(path), "w")
     script.write(header)
     script.write(module_string)
     script.write(commands)
     script.close()
 
-    print("Simulation script successfully created: \n {}".format("{}/runSimulations.sh".format(path)))
+    print("Simulation script successfully created: \n {}".format("{}runSimulations.sh".format(path)))
 
 def create_post_processing_script(
         case_dir, 
@@ -247,10 +248,65 @@ def create_post_processing_script(
 
     commands = "python3 {0} {1} {2} {3} {4}".format(script_path, case_dir, vtk_file, kin_visc, density, margin)
 
-    script = open("{}/postprocessing.sh".format(case_dir), "w")
+    script = open("{}postprocessing.sh".format(case_dir), "w")
     script.write(header)
     script.write(modules)
     script.write(commands)
     script.close()
 
-    print("Postprocessing script successfully created: \n {}".format("{}/postprocessing.sh".format(case_dir)))
+    print("Postprocessing script successfully created: \n {}".format("{}postprocessing.sh".format(case_dir)))
+
+def check_log(log_file):
+    """Checks OpenFOAM log file to see if an OpenFOAM process ended properly or aborted due to an error.
+    Returns True if log ended properly, else returns False.
+    
+    PARAMETERS
+    ----------
+    log_file : str
+        Path to the log file to be checked.
+    
+    RETURNS
+    -------
+    status : bool
+    True or False value depending on whether or not the OpenFOAM process ended properly, respectively."""
+
+    # Get the last word from the log file using the 'tail' command
+   
+    if not os.path.isfile(log_file):
+        status = False
+    else:
+        last_word = os.popen("tail {}".format(log_file)).read().split()[-1]   
+        # If log file ends with the word 'End', we know that the process ended properly, otherwise something went wrong
+        if last_word == "End" or last_word == "run":
+            status = True
+        else:
+            status = False
+
+    return status
+
+def check_file(file,i=0,process='Process',overwrite=False,log=False):
+
+    if os.path.isfile(file):
+        if overwrite:
+            print(" {} for case {} already performed \n \
+                    Simulation repeated, output overwritten.".format(process,i))
+            status=False
+        else:
+            if log:
+                last_word = os.popen("tail {}".format(file)).read().split()[-1]   
+                # If log file ends with the word 'End', we know that the process ended properly, otherwise something went wrong
+                if last_word == "End" or last_word == "run":
+                    status = True
+                    print(" {} for case {} performed properly  \
+                                \n continue with next case.".format(process,i))
+                else:
+                    status = False
+                    print("{} of case {} failed to run properly.".format(process,i))
+            else:
+                status=True
+                print(" {} for case {} already performed  \
+                            \n continue with next case.".format(process,i))        
+    else:
+        status=False
+    
+    return status

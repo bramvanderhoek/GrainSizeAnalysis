@@ -28,18 +28,25 @@ class Ensemble:
         domain,
         dirs,
         n_realizations=1,
+        cluster=False,
         bc="periodic",
+        **cluster_kwargs
     ):
 
         self.grain_model = grain_model
         self.domain = domain
         self.dirs = dirs
         self.n_realizations = n_realizations
-        self.bc = bc
-
+        self.bc = bc      
+        self.cluster=cluster
+        
         self.setup_dir_structure()
+        self.set_unit()
         self.set_seed()
         self.write_settings()
+
+        self.set_cluster_kwargs()
+        self.cluster_kwargs.update(cluster_kwargs)           
 
     def setup_dir_structure(self):
         if "dir_root" in self.dirs:
@@ -53,30 +60,35 @@ class Ensemble:
         else:
             self.name_run = "field_data"
 
-        # Check if baseDir path already exists, if not, create it
-        self.dir_sim = self.dir_root + self.name_run
+        # Check if ensemble directory already exists, if not, create it
+        self.dir_sim = "{}{}/".format(self.dir_root,self.name_run)
         if not os.path.isdir(self.dir_sim):
             os.mkdir(self.dir_sim)
-        # os.chdir(self.dirs['dir_sim'])
 
-        self.dir_stl = self.dir_sim + "/stl"
+        # Check if stl directory (containing geometries) already exists, if not, create it
+        self.dir_stl = "{}{}/".format(self.dir_sim,"stl")
         if not os.path.isdir(self.dir_stl):
             os.mkdir(self.dir_stl)
 
-        self.dir_stl_files = self.dir_stl + "/" + self.name_run + "_{}"
+        self.dir_stl_files = "{}{}{}/".format(self.dir_stl, self.name_run,"_{}")
+        #self.dir_stl_files = self.dir_stl + "/" + self.name_run + "_{}"
         self.name_stl_file = "stl"
 
-        self.dir_cases = self.dir_sim + "/cases"
+        # Check if cases directory (containing simulations) already exists, if not, create it
+        self.dir_cases = "{}{}/".format(self.dir_sim,"cases")
         if not os.path.isdir(self.dir_cases):
             os.mkdir(self.dir_cases)
-        self.dir_case_sim = self.dir_cases + "/" + self.name_run + "_{}"
+        #self.dir_case_sim = "{}{}".format(self.dir_cases,self.name_run) + "_{}"
+        self.dir_case_sim = "{}{}{}/".format(self.dir_cases, self.name_run,"_{}")
 
+
+        # Setup base case (containing openfoam standard simulation settings)
         if self.bc in ["periodic", "cyclic"]:
             dir_base = self.dirs["basecase_cyclic"]
         else:
             dir_base = self.dirs["basecase_symmetry"]
 
-        self.dir_basecase = self.dir_sim + "/baseCase"
+        self.dir_basecase = "{}{}".format(self.dir_sim,"baseCase")
         if not os.path.isdir(dir_base):
             raise ValueError(
                 "OpenFOAM base case directory '{0}' does not exist".format(
@@ -88,9 +100,41 @@ class Ensemble:
                 "cp -rf {0} {1}".format(dir_base, self.dir_basecase), shell=True
             )
 
+        # Set up python working directory to return from local command line runs
         self.python_wd = os.getcwd()
 
-    def set_seed(self, seed=False):
+    def set_unit(self,unit=False):
+
+        if 'unit' in self.domain:
+            unit=self.domain['unit']
+        
+        if unit=='m':
+            self.unit_factor=1.
+        elif unit=='cm':
+            self.unit_factor=0.01
+        elif unit=='mm':
+            self.unit_factor=0.001
+        else:
+            print("Warning: Unit not properly defined, using value of 1.")
+            self.unit_factor=1.
+
+    def set_cluster_kwargs(self):
+
+        self.cluster_kwargs = dict(
+            cores_per_sim=1,
+            n_parallel_sims=12,  # Number of simulations to run in parallel at one time (value higher than 1 only supported for cluster)
+            tasks_per_node=1,  # Amount tasks to be invoked per computing node
+            threads_per_core=2,  # Restrict node selection to nodes with at least the specified number of threads per core.
+            partition="allq",  # Which queue to run simulations on
+            modules = ["opt/all",           
+                       "gcc/6.4.0",
+                       "openmpi/gcc-6.4.0/3.1.2",
+                       "openFoam/6"],
+            scripts=[ # List of scripts to source when running bash script on cluster
+                "/trinity/opt/apps/software/openFoam/version6/OpenFOAM-6/etc/bashrc"],  
+            )
+
+    def set_seed(self,seed=False):
 
         # Since the seed entry of the model dictionary will be updated per simulation, keep track of the provided base seed
         if "seed" in self.grain_model:
@@ -180,13 +224,13 @@ class Ensemble:
         )
         settings_file.close()
 
-    def generate_geometries(self, stl_overwrite=False):
+    def generate_geometries(self,overwrite=False):
 
         """
 
         Optional Arguments
         ------------------
-        stl_overwrite       - Whether or not to overwrite stl files if they already exist
+        overwrite       - Whether or not to overwrite stl files if they already exist
 
         """
 
@@ -196,59 +240,43 @@ class Ensemble:
 
             if not os.path.isdir(self.dir_stl_files.format(i)):
                 os.mkdir(self.dir_stl_files.format(i))
+            file_stl = "{}{}{}".format(self.dir_stl_files.format(i), self.name_stl_file, ".stl")
 
-            file_stl = self.dir_stl_files.format(i) + "/" + self.name_stl_file + ".stl"
+            if writeS.check_file(file_stl,i=i,overwrite=overwrite,process="Domain creation",log=False):
+                continue
 
-            if (not os.path.isfile(file_stl)) or (
-                os.path.isfile(file_stl) and stl_overwrite
-            ):
-                if os.path.isfile(file_stl) and stl_overwrite:
-                    print("Overwriting stl file '{}'".format(file_stl))
+            if self.seed:  # If seed is in use, update it for this specific simulation
+                self.grain_model["seed"] = self.base_seed + i
 
-                if (
-                    self.seed
-                ):  # If seed is in use, update it for this specific simulation
-                    self.grain_model["seed"] = self.base_seed + i
+            por = randomCircles.create_model(
+                self.grain_model,
+                self.domain,
+                stl_filename=self.name_stl_file,
+                path=self.dir_stl_files.format(i),
+            )  # , plotting=True)
 
+            while not domain["por_min"] <= por <= domain["por_max"]:
+                print("Porosity not within specified range, recreating geometry")
+                if self.grain_model["seed"] is not False:
+                    print(
+                        "WARNING: provided seed was unable to generate \
+                        correct geometry, random seed will be used for \
+                        case {0}".format(i))
+                    self.grain_model["seed"] = np.random.randint(0, 10 ** 9)+i
                 por = randomCircles.create_model(
                     self.grain_model,
                     self.domain,
                     stl_filename=self.name_stl_file,
                     path=self.dir_stl_files.format(i),
-                )  # , plotting=True)
+                )
 
-                while not domain["por_min"] <= por <= domain["por_max"]:
-                    print("Porosity not within specified range, recreating geometry")
-                    if self.grain_model["seed"] is not False:
-                        print(
-                            "WARNING: provided seed was unable to generate correct geometry, random seed will be used for case {0}".format(
-                                i
-                            )
-                        )
-                        self.grain_model["seed"] = np.random.randint(0, 10 ** 9)
-                    por = randomCircles.create_model(
-                        self.grain_model,
-                        self.domain,
-                        stl_filename=self.name_stl_file,
-                        path=self.dir_stl_files.format(i),
-                    )
-            else:
-                print("stl file '{}' already exists, not overwritten".format(file_stl))
-
-        print(
-            "\n### Domains for {:d} realizations successfully set-up".format(
-                self.n_realizations
-            )
-        )
+        print("\n# Domains for {:d} realizations set-up #".format(self.n_realizations))
 
     def pre_process(
         self,
+        overwrite=False,
         snapping=True,
         snappy_refinement=False,
-        cluster=False,
-        overwrite=False,
-        cores_per_sim=1,
-        n_parallel_sims=12,
         **cluster_kwargs
     ):  
 
@@ -257,9 +285,7 @@ class Ensemble:
         ------------------
         snapping            - Whether or not to perform mesh snapping to grain surfaces during pre-processing                          
         snappy_refinement   - Whether or not to perform mesh refinement around grains during pre-processing
-        cluster             - Whether or not to run on cluster
-        cores_per_sim       - Number of cores to use for each simulation
-        n_parallel_sims     - 
+             - 
         
         cluster_args        - cluster arguments
             tasks_per_node      - Amount tasks to be invoked per computing node
@@ -270,8 +296,9 @@ class Ensemble:
         """
 
         print("\n### STARTING PRE-PROCESSING ###\n\n")
+        self.cluster_kwargs.update(cluster_kwargs)           
 
-        if self.bc in ["periodic", "cyclic"] and cores_per_sim > 1:
+        if self.bc in ["periodic", "cyclic"] and self.cluster_kwargs['cores_per_sim'] > 1:
             print(
                 "### WARNING:  using multiple cores for a case with cyclic BC is error prone"
             )
@@ -280,32 +307,24 @@ class Ensemble:
 
             # Get reference to directory of this case, this case's stl directory and to this case's .stl file
             case_dir = self.dir_case_sim.format(i)
-            dir_stl = self.dir_stl_files.format(i) + "/"
-            stl_file = dir_stl + self.name_stl_file + ".stl"
+            dir_stl = self.dir_stl_files.format(i) 
+            stl_file = "{}{}{}".format(dir_stl, self.name_stl_file,".stl")
 
-            if preP.check_log("{0}/snappyHexMesh_0.log".format(case_dir)):
-                if not overwrite:
-                    print(
-                        " Preprocessing for case {} already performed  \
-                                \n continue with next case.".format(i))
-                    continue
-                else:
-                    print(
-                        " Preprocessing for case {} already performed \n \
-                            preprocessing repeated, file overwritten.".format(i))
+            if writeS.check_file("{0}/snappyHexMesh_0.log".format(case_dir),i=i,
+                                 process='Preprocessing',overwrite=overwrite,log=True):
+                continue
 
             # Create case from baseCase if it does not exist yet, or if existing directory is not a valid OpenFOAM directory
             openfoam_dirs = [
-                "{}/{}".format(case_dir, folder)
+                "{}{}".format(case_dir, folder)
                 for folder in ["0", "constant", "system"]
             ]
             openfoam_case = np.array(
-                [os.path.isdir(folder) for folder in openfoam_dirs]
-            ).all()
+                [os.path.isdir(folder) for folder in openfoam_dirs]).all()
             if not os.path.isdir(case_dir) or not openfoam_case:
                 subprocess.call(["cp", "-rf", self.dir_basecase, case_dir])
 
-            dir_case_surface = case_dir + "/constant/triSurface"
+            dir_case_surface = case_dir + "constant/triSurface"
             if not os.path.isdir(dir_case_surface):
                 os.mkdir(dir_case_surface)
 
@@ -322,12 +341,10 @@ class Ensemble:
             location_in_mesh = map(float, lim_file.readline().split())
             lim_file.close()
 
-            dir_system = case_dir + "/system"
+            dir_system = case_dir + "system"
             # Update the blockMeshDict, snappyHexMeshDict and decomposeParDict of the case according to given parameters
 
-            preP.update_blockMeshDict(
-                dir_system, self.domain
-            )
+            preP.update_blockMeshDict(dir_system, self.domain)
 
             preP.update_snappyHexMeshDict(
                 dir_system,
@@ -338,34 +355,25 @@ class Ensemble:
                 castellated_mesh=True,
                 snap=snapping if not snappy_refinement else False,
             )
-            preP.update_decomposeParDict(dir_system, cores_per_sim)
-            preP.update_extrudeMeshDict(dir_system, domain["cell_size"])
+            preP.update_decomposeParDict(dir_system, self.cluster_kwargs['cores_per_sim'])
+            preP.update_extrudeMeshDict(dir_system, self.domain["cell_size"])
 
             writeS.create_pre_processing_script(
                 case_dir,
                 self.name_run.format(i),
                 refinement=snappy_refinement,
-                cluster=cluster,
-                **cluster_kwargs
+                cluster=self.cluster,
+                **self.cluster_kwargs
             )
 
             # Start meshing (when not on cluster)
-            if not cluster:
+            if not self.cluster:
                 ### ToDo: make it more general by putting file path to a bin folder that is in your $PATH
                 os.chdir(case_dir)
-                subprocess.run(
-                    [
-                        "chmod",
-                        "+x",
-                        "preprocessing{}.sh".format("_0" if snappy_refinement else ""),
-                    ]
-                )
-                # subprocess.Popen(['sh',"./preprocessing{}.sh".format("_0" if snappy_refinement else "")])#,shell=True)
-                subprocess.call(
-                    ["./preprocessing{}.sh".format("_0" if snappy_refinement else "")]
-                )  # ,shell=True)
-                # print("{}/preprocessing{}.sh".format(case_dir,"_0" if snappy_refinement else ""))
-                # print(os.path.isfile("{}/preprocessing{}.sh".format(case_dir,"_0" if snappy_refinement else "")))
+                subprocess.run(["chmod","+x","preprocessing{}.sh".format("_0" if snappy_refinement else "")])
+                subprocess.run(["./preprocessing{}.sh".format("_0" if snappy_refinement else "")]) 
+                #subprocess.run(["chmod","+x","{}preprocessing{}.sh".format(case_dir,"_0" if snappy_refinement else "")])
+                #subprocess.run(["sh", "{}preprocessing{}.sh".format(case_dir,"_0" if snappy_refinement else "")]) 
 
                 if snappy_refinement:
                     preP.update_snappyHexMeshDict(
@@ -378,38 +386,29 @@ class Ensemble:
                         snap=snapping,
                     )
                     subprocess.call(["chmod", "+x", "/preprocessing_1.sh"])
-                    # subprocess.Popen(['sh',"./preprocessing_1.sh"])
                     subprocess.call(["./preprocessing_1.sh"])
+                    #subprocess.run(["chmod", "+x", "{}preprocessing_1.sh".format(case_dir)])
+                    #subprocess.run(["sh", "{}/preprocessing_1.sh".format(case_dir)])
 
                 os.chdir(self.python_wd)
 
         # Start meshing (on cluster)
-        if cluster:
-
-            waiting_cases = [
-                self.dir_case_sim.format(i) for i in range(self.n_realizations)
-            ]
-            #            waiting_cases=[os.path.realpath("cases{0}{1}_{2}".format(os.sep, run_name, i)) for i in range(n_simulations)]
+        if self.cluster:
+            waiting_cases = [self.dir_case_sim.format(i) for i in range(self.n_realizations)]
+            # waiting_cases=[os.path.realpath("cases{0}{1}_{2}".format(os.sep, run_name, i)) for i in range(n_simulations)]
             finished_cases = []
             active_cases = []
 
             while len(finished_cases) < self.n_realizations:
 
                 # Start new cases if there are still waiting cases and there are free slots
-                while waiting_cases and len(active_cases) < n_parallel_sims:
+                while waiting_cases and len(active_cases) < self.cluster_kwargs['n_parallel_sims']:
                     new_case_dir = waiting_cases.pop(0)
                     active_cases.append(new_case_dir)
                     # Put new case in queue (note the '&' which prevents the command from blocking the program)
                     os.chdir(new_case_dir)
-                    subprocess.call(
-                        [
-                            "sbatch",
-                            "{0}{1}preprocessing{2}.sh".format(
-                                new_case_dir, os.sep, "_0" if snappy_refinement else ""
-                            ),
-                            "&",
-                        ]
-                    )
+                    subprocess.call(["sbatch", "{}/preprocessing{}.sh".format(
+                                new_case_dir, "_0" if snappy_refinement else ""),"&"])
                     os.chdir(self.dir_sim)
                     print("Cases running/in queue: {0}".format(active_cases))
 
@@ -422,33 +421,24 @@ class Ensemble:
                 queue = os.popen("squeue -h --Format=name:32,username:32,JobID").read()
                 queue = queue.split("\n")[:-1]
                 # Create dictionary with keys being the names of processes in the queue and values the usernames that started the process
-                queue = dict(
-                    [
+                queue = dict([
                         [i[:32].strip(), [i[32:64].strip(), i[64:].strip()]]
-                        for i in queue
-                    ]
-                )
+                        for i in queue])
                 for i in range(len(active_cases)):
                     # Get references to case directory and case name
                     case_dir = active_cases[i]
                     case_name = case_dir.split(os.sep)[-1]
                     # Check if case is still in the queue (currently username is not taken into consideration)
                     if not "{0}_pre".format(case_name) in queue:
-                        if snappy_refinement and not os.path.isfile(
-                            "{0}{1}snappyHexMesh_1.log".format(case_dir, os.sep)
-                        ):
+                        if snappy_refinement and not os.path.isfile("{}/snappyHexMesh_1.log".format(case_dir)):
                             # Start second part of meshing if refinement is on and the second snappyHexMesh log has not been created yet
                             os.chdir(case_dir)
-
                             # Get the stl directory corresponding to this case
                             case_num = case_dir.split("_")[-1]
                             # case_stl_dir = os.path.realpath("{0}{1}{2}_{3}".format(stl_dir, os.sep, run_name, case_num))
                             case_stl_dir = self.dir_stl_files.format(case_num)
-
                             # Get location in mesh from stl directory
-                            lim_file = open(
-                                "{0}/locationInMesh.dat".format(case_stl_dir)
-                            )
+                            lim_file = open("{}/locationInMesh.dat".format(case_stl_dir))
                             location_in_mesh = map(float, lim_file.readline().split())
                             lim_file.close()
 
@@ -461,13 +451,7 @@ class Ensemble:
                                 castellated_mesh=False,
                                 snap=snapping,
                             )  # , snap=True)
-                            subprocess.call(
-                                [
-                                    "sbatch",
-                                    "{0}{1}preprocessing_1.sh".format(case_dir, os.sep),
-                                    "&",
-                                ]
-                            )
+                            subprocess.call(["sbatch","{}/preprocessing_1.sh".format(case_dir), "&"])
                             os.chdir(self.dir_sim)
                         else:
                             # Insert the index of finished case at the beginning of the endCases list, so it will be ordered from high to low index
@@ -478,62 +462,57 @@ class Ensemble:
                     finished_cases.append(case)
                     print("Finished cases: {0}".format(finished_cases))
 
-        print(
-            "Preprocssing for {:d} realizations successfully".format(
-                self.n_realizations
-            )
-        )
+        print( "\n# Preprocssing for {:d} realizations performed #".format(self.n_realizations))
 
-    def simulate(self, overwrite=False, cluster=False, **cluster_kwargs):
+    def simulate(self, overwrite=False, **cluster_kwargs):
 
         print("\n### STARTING SIMULATIONS ###\n\n")
+        self.cluster_kwargs.update(cluster_kwargs)
 
         for i in range(self.n_realizations):
             case_dir = self.dir_case_sim.format(i)
+
             if not os.path.isdir(case_dir):
-                print(
-                    "WARNING: case directory '{}' does not exist! \n Check preprocessing. \n Continue by skipping this case.".format(
-                        case_dir
-                    )
-                )
+                print("WARNING: case directory '{}' does not exist! \n \
+                    Check preprocessing. \n \
+                    Continue by skipping this case.".format(case_dir))
                 continue
-            if preP.check_log("{0}/simpleFoam.log".format(case_dir)):
-                if not overwrite:
-                    print(
-                        " Simulation for case {} already performed  \
-                                \n continue with next case.".format(i))
-                    continue
-                else:
-                    print(
-                        " Simulation for case {} already performed \n \
-                            Simulation repeated, output overwritten.".format(i))
+
+            if writeS.check_file("{0}/simpleFoam.log".format(case_dir),i=i,overwrite=overwrite,process="Simulation",log=True):
+                continue
 
             writeS.create_simulation_script(
-                case_dir, self.name_run.format(i), **cluster_kwargs
+                case_dir, 
+                self.name_run.format(i), 
+                cluster=self.cluster,
+                **cluster_kwargs
             )
 
-            if not cluster:
+            if not self.cluster:
                 os.chdir(case_dir)
                 subprocess.call(["chmod", "+x", "runSimulations.sh"])
                 subprocess.call(["./runSimulations.sh"])
-                if not preP.check_log("{0}/simpleFoam.log".format(case_dir)):
-                    print("Case '{0}' failed to run properly.".format(i))
-                #                    print("Restarting case '{0}'".format(case_name))
+                #subprocess.run(["chmod", "+x", "{}runSimulations.sh".format(case_dir)])
+                #subprocess.run(["sh", "{}runSimulations.sh".format(case_dir)])
+                writeS.check_file("{}/simpleFoam.log".format(case_dir),i=i,overwrite=True,process="Simulation",log=True)
                 os.chdir(self.python_wd)
 
-        print(
-            "Simulation of {:d} realizations successfully".format(self.n_realizations)
-        )
+        print("\n# Simulation of {:d} realizations performed #".format(self.n_realizations))
 
-    def post_process(self,cluster=False,post_processing_margin=False):
+    def post_process(self,overwrite=False,post_processing_margin=False,file_name_out='out.dat'):
         print("\n### STARTING POST-PROCESSING ###\n\n")
     
         for i in range(self.n_realizations):
             case_dir = self.dir_case_sim.format(i)
-            vtk_dir = "{}/VTK".format(case_dir) 
+            vtk_dir = "{}VTK".format(case_dir) 
+            file_output = "{}/{}".format(case_dir,file_name_out)
+
+            if writeS.check_file(file_output,i=i,overwrite=overwrite,process="Postprocessing",log=False):
+                continue
 
             if not os.path.isdir(case_dir) or not os.path.isdir(vtk_dir):
-                print("WARNING: sim results does not exist! \n Check simulation. \n Continue by skipping this case.")
+                print("WARNING: sim results do not exist for case {}! \n Check simulation. \
+                      \n Continue by skipping this case.".format(i))
                 continue
 
             # Get filename of .vtk file of final iteration, check vtk-files
@@ -542,48 +521,107 @@ class Ensemble:
                 if item.lower().endswith(".vtk"): # and os.path.isfile(item):
                     vtk_files.append(item)
             if not vtk_files:
-                print("WARNING: no .vtk files in VTK directory of case {}, skipping this case".format(i))
+                print("WARNING: no .vtk files in VTK directory of case {}, \
+                      skipping this case".format(i))
             vtk_files.sort()
             vtk_file = vtk_files[-1]
             if vtk_file.split("_")[-1] == "0":
-                print("WARNING: no .vtk files of timestep > 0 in 'VTK' directory of case '{}', skipping this case".format(i))
+                print("WARNING: no .vtk files of timestep > 0 in 'VTK' directory \
+                      of case '{}', skipping this case".format(i))
                 continue
-    
+            
             # Create script for running post-processing on cluster
             if not post_processing_margin:
-                post_processing_margin=(self.domain["xmax"] - self.domain["xmin"]) * 0.1
-
+                post_processing_margin= 0.1*(self.domain["xmax"] - self.domain["xmin"]) *self.unit_factor
+            #print(post_processing_margin)
 
             file_vtk="{}/{}".format(vtk_dir,vtk_file)
 
-            if "file_output" in self.dirs:
-                file_output = self.dirs["file_output"]
-            else:
-                file_output = "{}/out.dat".format(self.dir_sim)
-
-            if not cluster:
+            if not self.cluster:
                 postP.post_process(file_vtk,file_output,margin=post_processing_margin)
 
             #writeS.create_post_processing_script(case_dir,filename,"{}/postProcessing.py".format(self.python_wd),  "VTK/{}".format(vtk_file), margin=post_processing_margin)
 
+        #os.chdir(self.dir_sim)
+        if self.cluster:
+            waiting_cases = [self.dir_case_sim.format(i) for i in range(self.n_realizations)]
+            active_cases = []
+            finished_cases = []
+    
+            while len(finished_cases) < self.n_realizations:
+                # Start new cases if there are still waiting cases and there are free slots
+                while waiting_cases and len(active_cases) < self.cluster_kwargs['n_parallel_sims']:
+                    new_case_dir = waiting_cases.pop(0)
+                    if not os.path.isfile("{}/postprocessing.sh".format(new_case_dir)):
+                        print("WARNING: no 'postprocessing.sh' bash script in case '{0}', skipping case".format(
+                                new_case_dir.split(os.sep)[-1]))
+                        finished_cases.append(new_case_dir)
+                        continue
+                    active_cases.append(new_case_dir)
+                    # Put new case in queue (note the '&' which prevents the command from blocking the program)
+                    os.chdir(new_case_dir)
+                    subprocess.call(["sbatch","{0}/postprocessing.sh".format(new_case_dir), "&"])
+                    
+                    os.chdir(self.dir_sim)
+                    print("Cases running/in queue: {0}".format(active_cases))
+    
+                # Give the cluster some time to put the scripts into the queue
+                time.sleep(5)
+    
+                # Initialize list which will hold the indices of cases which are finished
+                end_cases = []
+                # Get list of processes that are in the queue or running, together with the username
+                queue = os.popen("squeue -h --Format=name:32,username:32").read()
+                queue = queue.split("\n")[:-1]
+                # Create dictionary with keys being the names of processes in the queue and values the usernames that
+                # started the process
+                queue = dict([[i[:32].strip(), i[32:].strip()] for i in queue])
+                for i in range(len(active_cases)):
+                    # Get references to case directory and case name
+                    case_dir = active_cases[i]
+                    case_name = case_dir.split(os.sep)[-1]
+                    # Check if case is still in the queue (currently username is not taken into consideration)
+                    if not "{0}_post".format(case_name) in queue:
+                        end_cases.insert(0, i)
+    
+                for i in end_cases:
+                    case = active_cases.pop(i)
+                    finished_cases.append(case)
+                    print("Finished cases: {0}".format(finished_cases))
+#            print("All cases finished")
 
+        print("\n# Postprocessing of {:d} realizations performed #".format(self.n_realizations))
 
+    def write_results(self,file_name_results="results.dat",file_name_out="out.dat"):
 
+            # set results file 
+        if "file_results" in self.dirs:
+            file_results = self.dirs["file_results"]
+        else:
+            file_results = "{}{}".format(self.dir_sim,file_name_results)
 
+        if not os.path.isfile(file_results):
+            results = open(file_results, "w")
+            results.write("Simulation\tPorosity_[-]\tPermeability_[m^2]\n")
+        else:
+            results = open(file_results, "a+")
 
+        for i in range(self.n_realizations):
+            case_dir = self.dir_case_sim.format(i)
+            file_output = "{}/{}".format(case_dir,file_name_out)
+       
+            if not os.path.isdir(case_dir) or not os.path.isfile(file_output):
+                print("WARNING: sim result do not exist for case {}! \n Check simulations and postprocessing. \n Continue by skipping this case.".format(i))
+                continue
 
-
-
-
-
-
-
-        print(
-            "Postprocessing of {:d} realizations successfully".format(
-                self.n_realizations
-            )
-        )
-
+            out = open(file_output, "r")
+            por, k = map(float, out.readline().strip().split(","))
+            out.close()
+    
+            results.write("{0}\t{1}\t{2}\n".format(i, por, k))
+      
+        results.close()
+        print('\n# Collection of output for {:d} realizations performed #'.format(self.n_realizations))
 
 ###############################################################################
 ###############################################################################
@@ -612,6 +650,7 @@ domain = dict(
     por_min=0.3,
     por_max=0.4,
     cell_size=grain_model["mindist"]/np.sqrt(8),
+    unit='mm',
 )
 
 # from pathlib import Path
@@ -620,40 +659,31 @@ name="Ensemble_02"
 # path = os.getcwd()
 
 dirs = dict(
-    dir_root = path,
+#    dir_root = path,
     name_run = name,  # Name of this batch of simulations
-    basecase_symmetry = path + "baseCase_symmetry",  # Directory to copy the base OpenFOAM case from
-    basecase_cyclic= path + "baseCase_cyclic",
-#    file_settings = path + "Settings_{}.txt".format(name), 
-#    file_output = path + "Output.txt",
+    basecase_symmetry = path + "baseCase_symmetry/",  # Directory to copy the base OpenFOAM case from
+    basecase_cyclic= path + "baseCase_cyclic/",
+#    file_settings = "{}{}/Settings_{}.txt".format(path, name, name), 
+#    file_results = "{}{}/Results_{}.txt".format(path, name, name), 
 )
 
-cluster_kwargs = dict(
-    cores_per_sim=1,
-    n_parallel_sims=12,  # Number of simulations to run in parallel at one time (value higher than 1 only supported for cluster)
-    tasks_per_node=1,  # Amount tasks to be invoked per computing node
-    threads_per_core=2,  # Restrict node selection to nodes with at least the specified number of threads per core.
-    partition="allq",  # Which queue to run simulations on
-    modules = ["opt/all",           
-               "gcc/6.4.0",
-               "openmpi/gcc-6.4.0/3.1.2",
-               "openFoam/6"],
-    scripts=[ # List of scripts to source when running bash script on cluster
-        "/trinity/opt/apps/software/openFoam/version6/OpenFOAM-6/etc/bashrc"
-    ],  
-)
+#cluster_kwargs = dict(
+#    cores_per_sim=1,
+#    n_parallel_sims=12,  # Number of simulations to run in parallel at one time (value higher than 1 only supported for cluster)
+#    tasks_per_node=1,  # Amount tasks to be invoked per computing node
+#    threads_per_core=2,  # Restrict node selection to nodes with at least the specified number of threads per core.
+#    partition="allq",  # Which queue to run simulations on
+#    modules = ["opt/all",           
+#               "gcc/6.4.0",
+#               "openmpi/gcc-6.4.0/3.1.2",
+#               "openFoam/6"],
+#    scripts=[ # List of scripts to source when running bash script on cluster
+#        "/trinity/opt/apps/software/openFoam/version6/OpenFOAM-6/etc/bashrc"
+#    ],  
+#)
 
-# def test(**kwargs):
-#    for key, value in kwargs.items():
-#        print ("{} == {}".format(key,value))
-#
-# test(**cluster_kwargs)
-
-# Which steps to perform
-# generate_domain = True
-# pre_process = True
-# simulate = True
-# post_process = True
+#cluster_new=dict(cores_per_sim=2)
+#cluster_kwargs.update(cluster_new)
 
 ###############################################################################
 ###############################################################################
@@ -662,9 +692,18 @@ cluster_kwargs = dict(
 ###############################################################################
 ### Initialize Ensemble
 E1 = Ensemble(
-    grain_model, domain, dirs, n_realizations=2
+    grain_model, 
+    domain, 
+    dirs, 
+    n_realizations=5,
+    cluster=False,
 )  # , pre_process = True, simulations = True, post_process = True)
-
+#from vtkTools import VTKObject
+#
+#file_vtk='/home/zech0001/Projects/GrainSizeAnalysis/Workflow/field_data/cases/field_data_0/VTK/field_data_0_88.vtk'
+#vtk = VTKObject(file_vtk, calc_volumes=True)
+#test=vtk.calc_mean("p")
+#
 ###############################################################################
 ### Initializing structure and settings (done internally)
 
@@ -675,8 +714,8 @@ E1 = Ensemble(
 ###############################################################################
 ### Run Workflow on Ensemble - do explicitely
 
-#E1.generate_geometries()
-#E1.pre_process(cluster=False) #, **cluster_kwargs)
-#E1.simulate(cluster=False)
-E1.post_process(cluster=False)
-
+E1.generate_geometries()
+E1.pre_process() #, **cluster_kwargs)
+E1.simulate()
+E1.post_process()
+E1.write_results()

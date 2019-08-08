@@ -295,17 +295,19 @@ def create_model(
     mesh_area = (xmax - xmin) * (ymax - ymin)
 
     # Check which type of distribution to use (only one at the moment).
-    if model["model_type"] in ["trunc_lognormal", "truncLogNormal"]:
+    if model["model_type"].lower() in ["trunc_lognormal", "trunclognormal"]:
         rmin = model["model_data"]["rmin"]
         rmax = model["model_data"]["rmax"]
         rmean = model["model_data"]["rmean"]
         rstd = model["model_data"]["rstd"]
         # Generate grains based on truncated log normal distribution
         pdf_gen = TruncLogNorm(rmin, rmax, loc=rmean, scale=rstd)
-    elif model["model_type"] in ["data_distribution", "data"]:
+    elif model["model_type"].lower() in ["data_distribution", "data"]:
         data_points = model["model_data"]["data_points"]
         c_freq = model["model_data"]["c_freq"]
         pdf_gen = DataDistribution(data_points, c_freq)
+    else:
+        raise ValueError("Model tpe not properly defined")
 
     r = np.array([])
     por_new = 1

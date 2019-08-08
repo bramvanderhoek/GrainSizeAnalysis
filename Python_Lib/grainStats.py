@@ -17,7 +17,11 @@ class TruncLogNorm:
 
     def pdf(self, x):
         """Get the value of the distribution's probability density function at location x."""
-        pdf = truncnorm.pdf((np.log(x) - self._loc) / self._scale, self._a, self._b) / self._scale / x
+        pdf = (
+            truncnorm.pdf((np.log(x) - self._loc) / self._scale, self._a, self._b)
+            / self._scale
+            / x
+        )
         return pdf
 
     def rvs(self, size):
@@ -29,11 +33,11 @@ class TruncLogNorm:
     def transform_moment(self, mu, std, lognorm_to_norm=True):
         """Transform first two moments of log normal distribution to the moments of normal distribution or vice versa."""
         if lognorm_to_norm:
-            m1 = np.exp(np.log(mu) - 0.5 * np.log(1 + std**2 / mu**2))
-            m2 = np.sqrt(np.log(1 + std**2 / mu**2))
+            m1 = np.exp(np.log(mu) - 0.5 * np.log(1 + std ** 2 / mu ** 2))
+            m2 = np.sqrt(np.log(1 + std ** 2 / mu ** 2))
         else:
-            m1 = np.exp(mu + 0.5*std)
-            m2 = m1**2 * (np.exp(std**2) - 1)
+            m1 = np.exp(mu + 0.5 * std)
+            m2 = m1 ** 2 * (np.exp(std ** 2) - 1)
         return m1, m2
 
 
@@ -45,7 +49,7 @@ class DataDistribution:
         self.c_freq = np.array(c_freq)
         self.freq = np.diff(self.c_freq)
         arg = np.log(self.data_points)
-        self.hist = rv_histogram((100*self.freq, arg))
+        self.hist = rv_histogram((100 * self.freq, arg))
 
     def pdf(self, x):
         pdf = self.hist.pdf(x)
@@ -78,12 +82,12 @@ RETURNS
 -------
 vals : array
     Array of values based on a truncated log normal distribution with the given input parameters."""
-    
+
     # Calculate statistics of logarithm
     log_rmin = np.log(rmin)
     log_rmax = np.log(rmax)
-    log_rmean = np.log(rmean) - 0.5*np.log(1 + (rstd**2) / (rmean**2))
-    log_rstd = np.sqrt(np.log(1 + rstd**2 / rmean**2))
+    log_rmean = np.log(rmean) - 0.5 * np.log(1 + (rstd ** 2) / (rmean ** 2))
+    log_rstd = np.sqrt(np.log(1 + rstd ** 2 / rmean ** 2))
 
     # Convert min and max for normal distribution to min and max for standard normal distribution
     a, b = (log_rmin - log_rmean) / log_rstd, (log_rmax - log_rmean) / log_rstd
@@ -103,8 +107,8 @@ vals : array
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
-    data = [0.00063,0.002,0.016,0.032,0.05,0.063,0.125,0.25,0.5,1,2,6.3]
-    c_freq = [0,9.7,19,26,30,33,36,56,83,94,98,100]
+    data = [0.00063, 0.002, 0.016, 0.032, 0.05, 0.063, 0.125, 0.25, 0.5, 1, 2, 6.3]
+    c_freq = [0, 9.7, 19, 26, 30, 33, 36, 56, 83, 94, 98, 100]
 
     dist = DataDistribution(data, c_freq)
     vals = dist.rvs(1000)

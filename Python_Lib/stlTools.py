@@ -24,9 +24,9 @@ RETURNS
 faces : array_like
     Array of faces making up the cylinder."""
 
-    t = np.array([i/n*2*np.pi for i in range(n+1)])
-    x = np.array([center[0] + radius*np.cos(i) for i in t])
-    y = np.array([center[1] + radius*np.sin(i) for i in t])
+    t = np.array([i / n * 2 * np.pi for i in range(n + 1)])
+    x = np.array([center[0] + radius * np.cos(i) for i in t])
+    y = np.array([center[1] + radius * np.sin(i) for i in t])
     vertices_bottom = np.array([(x_i, y_i, 0) for x_i, y_i in zip(x, y)])
     vertices_top = np.array([(x_i, y_i, height) for x_i, y_i in zip(x, y)])
 
@@ -34,16 +34,28 @@ faces : array_like
     faces = []
     for i in range(n):
         # Side triangles touching bottom pseudo circle
-        side_face_bottom = [vertices_bottom[i], vertices_bottom[i+1], vertices_top[i+1]]
+        side_face_bottom = [
+            vertices_bottom[i],
+            vertices_bottom[i + 1],
+            vertices_top[i + 1],
+        ]
         faces.append(side_face_bottom)
         # Side triangles touching top pseudo circle
-        side_face_top = [vertices_bottom[i], vertices_top[i+1], vertices_top[i]]
+        side_face_top = [vertices_bottom[i], vertices_top[i + 1], vertices_top[i]]
         faces.append(side_face_top)
         # Bottom triangles
-        bottom_face = [vertices_bottom[i], (center[0], center[1], 0), vertices_bottom[i+1]]
+        bottom_face = [
+            vertices_bottom[i],
+            (center[0], center[1], 0),
+            vertices_bottom[i + 1],
+        ]
         faces.append(bottom_face)
         # Top triangles
-        top_face = [vertices_top[i], vertices_top[i+1], (center[0], center[1], height)]
+        top_face = [
+            vertices_top[i],
+            vertices_top[i + 1],
+            (center[0], center[1], height),
+        ]
         faces.append(top_face)
 
     faces = np.array(faces)
@@ -79,7 +91,7 @@ objects : array_like
     Array of Mesh objects to combine into an .stl file.
 filename : str
     Filename of the .stl file."""
-    
+
     combined = mesh.Mesh(np.concatenate([obj.data for obj in objects]))
     combined.save(filename + ".stl")
 
